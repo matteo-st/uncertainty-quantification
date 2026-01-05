@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "error-estimation"
+version = "0.1.0"
+description = "Error detection experiments for model reliability."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "torch",
+  "torchvision",
+  "pytorch-lightning",
+  "lightning-bolts",
+  "scikit-learn",
+  "typed-argument-parser",
+  "pandas",
+  "matplotlib",
+  "seaborn",
+  "tensorboard",
+  "timm",
+  "mlflow",
+  "pyyaml",
+  "tqdm",
+  "threadpoolctl",
+  "joblib",
+  "numpy",
+  "torch-uncertainty",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+  "black",
+  "isort",
+]
+
+[project.scripts]
+error-estimation = "error_estimation.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

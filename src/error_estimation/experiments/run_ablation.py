@@ -1,0 +1,255 @@
+from __future__ import annotations
+
+import argparse
+import os
+from copy import deepcopy
+from pathlib import Path
+
+import torch
+
+from error_estimation.evaluators import EvaluatorAblation
+from error_estimation.utils.config import Config
+from error_estimation.utils.datasets import get_dataset
+from error_estimation.utils.datasets.dataloader import prepare_ablation_dataloaders
+from error_estimation.utils.experiment import copy_configs, ensure_dir, set_num_threads, write_run_metadata
+from error_estimation.utils.helper import setup_seeds
+from error_estimation.utils.logging import setup_logging
+from error_estimation.utils.models import get_model
+from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
+from error_estimation.utils.tracking import MLflowTracker, flatten_config
+from error_estimation.experiments.run_detection import _collect_metrics
+
+
+def _latent_paths_for_cal(latent_dir: str, data_cfg: dict, detection_cfg: dict, seed_split: int, n_cal: int) -> dict[str, str]:
+    latent_root = Path(latent_dir) / f"seed-split-{seed_split}"
+    latent_root.mkdir(parents=True, exist_ok=True)
+    return {
+        "res": str(
+            latent_root
+            / (
+                f"res_n-samples-{data_cfg['n_samples']['res']}"
+                f"_transform-{detection_cfg['experience_args']['transform']['res']}"
+                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['res']}.pt"
+            )
+        ),
+        "cal": str(
+            latent_root
+            / (
+                f"cal_n-samples-{n_cal}"
+                f"_transform-{detection_cfg['experience_args']['transform']['cal']}"
+                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['cal']}.pt"
+            )
+        ),
+        "test": str(latent_root / f"test_n-samples-{data_cfg['n_samples']['test']}.pt"),
+    }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run n_cal ablation experiments.")
+    parser.add_argument(
+        "--config-dataset",
+        "--config_dataset",
+        dest="config_dataset",
+        default="configs/datasets/cifar10/cifar10_ablation.yml",
+        help="Path to the dataset config file",
+    )
+    parser.add_argument(
+        "--config-model",
+        "--config_model",
+        dest="config_model",
+        default="configs/models/cifar10_resnet34.yml",
+        help="Path to the model config file",
+    )
+    parser.add_argument(
+        "--config-detection",
+        "--config_detection",
+        dest="config_detection",
+        default="configs/postprocessors/clustering/cifar10_resnet34_gmm.yml",
+        help="Path to the detection config file",
+    )
+    parser.add_argument(
+        "--root-dir",
+        "--root_dir",
+        dest="root_dir",
+        default=RESULTS_DIR,
+        help="Root directory to save results",
+    )
+    parser.add_argument(
+        "--latent-dir",
+        "--latent_dir",
+        dest="latent_dir",
+        default=LATENTS_DIR,
+        help="Directory to save latent representations",
+    )
+    parser.add_argument("--data-dir", dest="data_dir", default=DATA_DIR, help="Dataset root directory")
+    parser.add_argument(
+        "--checkpoints-dir",
+        dest="checkpoints_dir",
+        default=CHECKPOINTS_DIR,
+        help="Checkpoint root directory",
+    )
+    parser.add_argument("--seed", type=int, default=1, help="Random seed for reproducibility")
+    parser.add_argument("--gpu-id", "--gpu_id", dest="gpu_id", type=int, default=0, help="GPU ID to use")
+    parser.add_argument("--seed-splits", nargs="+", type=int, default=None, help="Optional override for seed splits")
+    parser.add_argument(
+        "--n-cal",
+        dest="n_cal",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Override calibration sample sizes (space-separated)",
+    )
+    parser.add_argument("--run-tag", default=None, help="Optional subfolder name under root_dir")
+    parser.add_argument("--num-threads", type=int, default=None, help="Force CPU thread count")
+    parser.add_argument("--log-level", default="INFO", help="Logging level")
+    parser.add_argument("--dry-run", action="store_true", help="Validate configs and exit")
+    parser.add_argument(
+        "--mlflow-uri",
+        default=os.environ.get("MLFLOW_TRACKING_URI"),
+        help="MLflow tracking URI (overrides env)",
+    )
+    parser.add_argument(
+        "--mlflow-experiment",
+        default=os.environ.get("MLFLOW_EXPERIMENT_NAME", "error-estimation"),
+        help="MLflow experiment name",
+    )
+    parser.add_argument("--mlflow-run-name", default=None, help="MLflow run name override")
+    parser.add_argument("--no-mlflow", action="store_true", help="Disable MLflow logging")
+    return parser
+
+
+def run(args: argparse.Namespace) -> None:
+    data_cfg = Config(args.config_dataset)
+    model_cfg = Config(args.config_model)
+    detection_cfg = Config(args.config_detection)
+    for key in ("transform", "n_epochs"):
+        if key not in detection_cfg.get("experience_args", {}):
+            raise KeyError(f"Missing detection.experience_args.{key}")
+
+    root_dir = Path(args.root_dir)
+    if args.run_tag:
+        root_dir = root_dir / args.run_tag
+    ensure_dir(root_dir)
+
+    logger = setup_logging(root_dir, level=args.log_level)
+    logger.info("Starting n_cal ablation in %s", root_dir)
+
+    config_paths = {
+        "dataset": args.config_dataset,
+        "model": args.config_model,
+        "detection": args.config_detection,
+    }
+    copied_configs = copy_configs(root_dir, config_paths)
+    metadata_path = write_run_metadata(root_dir, args, copied_configs)
+
+    tracker = MLflowTracker(
+        enabled=not args.no_mlflow,
+        experiment_name=args.mlflow_experiment,
+        tracking_uri=args.mlflow_uri,
+        run_name=args.mlflow_run_name,
+    )
+
+    with tracker:
+        tracker.log_params(
+            flatten_config(
+                {
+                    "dataset": dict(data_cfg),
+                    "model": dict(model_cfg),
+                    "detection": dict(detection_cfg),
+                }
+            )
+        )
+        tracker.log_artifact(metadata_path)
+        for cfg_path in copied_configs.values():
+            tracker.log_artifact(cfg_path)
+
+        if args.dry_run:
+            logger.info("Dry run complete (configs loaded).")
+            return
+
+        if args.num_threads is not None:
+            set_num_threads(args.num_threads)
+
+        seed_splits = args.seed_splits or data_cfg["seed_split"]
+        n_cal_values = args.n_cal
+        if n_cal_values is None:
+            n_cal_cfg = data_cfg["n_samples"]["cal"]
+            n_cal_values = n_cal_cfg if isinstance(n_cal_cfg, list) else [n_cal_cfg]
+
+        logger.info("Seed splits: %s", seed_splits)
+        logger.info("n_cal values: %s", n_cal_values)
+
+        for seed_split in seed_splits:
+            logger.info("Running seed split %s", seed_split)
+            setup_seeds(args.seed, seed_split)
+
+            dataset = get_dataset(
+                dataset_name=data_cfg["name"],
+                model_name=model_cfg["model_name"],
+                root=args.data_dir,
+                preprocess=model_cfg["preprocessor"],
+                shuffle=False,
+            )
+
+            device = torch.device(f"cuda:{args.gpu_id}" if torch.cuda.is_available() else "cpu")
+            model = get_model(
+                model_name=model_cfg["model_name"],
+                dataset_name=data_cfg["name"],
+                n_classes=data_cfg["num_classes"],
+                model_seed=model_cfg["seed"],
+                checkpoint_dir=os.path.join(args.checkpoints_dir, model_cfg["preprocessor"]),
+            )
+            model = model.to(device)
+            model.eval()
+            for p in model.parameters():
+                p.requires_grad_(False)
+
+            run_dir = root_dir / f"seed-split-{seed_split}"
+            ensure_dir(run_dir)
+
+            for n_cal in n_cal_values:
+                res_loader, cal_loader, test_loader = prepare_ablation_dataloaders(
+                    dataset=dataset,
+                    seed_split=seed_split,
+                    n_res=data_cfg["n_samples"]["res"],
+                    n_cal=n_cal,
+                    n_test=data_cfg["n_samples"]["test"],
+                    batch_size_train=data_cfg["batch_size_train"],
+                    batch_size_test=data_cfg["batch_size_test"],
+                    cal_transform=detection_cfg["experience_args"]["transform"]["cal"],
+                    res_transform=detection_cfg["experience_args"]["transform"]["res"],
+                    data_name=data_cfg["name"],
+                    model_name=model_cfg["model_name"],
+                )
+
+                latent_paths = _latent_paths_for_cal(args.latent_dir, data_cfg, detection_cfg, seed_split, n_cal)
+                evaluator = EvaluatorAblation(
+                    model=model,
+                    cfg_detection=deepcopy(detection_cfg),
+                    cfg_dataset=data_cfg,
+                    device=device,
+                    res_loader=res_loader,
+                    cal_loader=cal_loader,
+                    test_loader=test_loader,
+                    result_folder=str(run_dir),
+                    metric="fpr",
+                    latent_paths=latent_paths,
+                    n_cal=n_cal,
+                    seed_split=seed_split,
+                )
+                evaluator.run()
+
+            metrics = _collect_metrics(run_dir)
+            if metrics:
+                tracker.log_metrics(metrics, step=seed_split)
+            tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    run(args)
+
+
+if __name__ == "__main__":
+    main()
