@@ -280,90 +280,11 @@ def run(args: argparse.Namespace) -> None:
             tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}")
 
 
-+def main(argv: list[str] | None = None) -> None:
-+    parser = build_parser()
-+    args = parser.parse_args(argv)
-+    run(args)
-+
-+
- if __name__ == "__main__":
--    parser = argparse.ArgumentParser()
--    parser.add_argument(
--        '--config_dataset', 
--        type=str, 
--        default="configs/datasets/cifar10/cifar10_ablation.yml",
--        help='Path to the dataset config file'
--        )
--    parser.add_argument(
--        '--config_model', 
--        type=str, 
--        default="configs/models/cifar10_resnet34.yml",
--        help='Path to the model config file'
--        )
--    parser.add_argument(
--        '--config_detection', 
--        type=str, 
--        default="configs/detection/clustering.yml",
--        help='Path to the detection config file'
--        )
--    parser.add_argument(
--        '--root_dir', 
--        type=str, 
--        default="./results/ablation/cifar10_n_cal/",
--        help='Root directory to save results'
--        )
--    parser.add_argument(
--        '--seed', 
--        type=int, 
--        default=1,
--        help='Random seed for reproducibility'
--        )
--    parser.add_argument(
--        '--gpu_id', 
--        type=int, 
--        default=0,
--        help='GPU ID to use'
--        )
--    parser.add_argument(
--        '--latent_dir', 
--        type=str, 
--        default="./latent/ablation/cifar10_n_cal/",
--        help='Directory to save latent representations'
--        )
--    parser.add_argument(
--        '--metric', 
--        type=str, 
--        default="fpr",
--        help='Metric to use for hyperparams selection'
--        )
--    parser.add_argument(
--        '--quantizer_metric', 
--        type=str, 
--        default="same",
--        help='Metric to use for quantizer selection'
--        )
--    parser.add_argument(
--        '--mode', 
--        type=str, 
--        default="search",
--        help='Mode to use (search or evaluation)'
--        )
--    args = parser.parse_args()
--
--    data_cfg = Config(args.config_dataset)
--    model_cfg = Config(args.config_model)
--    cfg_detection = Config(args.config_detection)
--
--
--    
--    # seed_splits = data_cfg["seed_split"][-1]
--    # n_cal1 = data_cfg["n_samples"]["cal1"][-1]
--    # print(data_cfg["seed_split"])
--    # print(data_cfg["n_samples"]["cal1"])
--    # for seed_split, n_cal in product(data_cfg["seed_split"], data_cfg["n_samples"]["cal"]):
--    #     print(f"seed_split: {seed_split}, n_cal: {n_cal}")
--    #     main(seed_split, n_cal)
--    for seed_split in data_cfg["seed_split"]:
--        print(f"seed_split: {seed_split}")
--        main(seed_split)
-+    main()
+def main(argv: list[str] | None = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    run(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,6 @@ from torchvision import transforms
 import json 
 from . import resnet, densenet
 from .models import ThresholdClassifier, BayesClassifier, MLPClassifier
-from transformers import ViTForImageClassification, ViTImageProcessor
 import timm
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
@@ -72,14 +71,14 @@ def _get_default_imagenet_transforms():
     ])
     return train_transforms, test_transforms
 
-class ViTLogitsOnly(ViTForImageClassification):
-    def forward(self, *args, **kwargs) -> torch.Tensor:
-        # Call parent forward to get the ImageClassifierOutput
-        outputs = super().forward(*args, **kwargs)
-        # Return only the logits tensor
-        return outputs.logits
-
 def ViTBase16ImageNet(features_nodes=None):
+    from transformers import ViTForImageClassification, ViTImageProcessor
+
+    class ViTLogitsOnly(ViTForImageClassification):
+        def forward(self, *args, **kwargs) -> torch.Tensor:
+            outputs = super().forward(*args, **kwargs)
+            return outputs.logits
+
     train_transforms, test_transforms = _get_default_imagenet_transforms()
     processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224')
     model = ViTLogitsOnly.from_pretrained(
@@ -139,6 +138,8 @@ def TimmViTTiny16ImageNet(features_nodes=None):
 
 
 def ViTLarge16ImageNet(features_nodes=None):
+    from transformers import ViTForImageClassification
+
     train_transforms, test_transforms = _get_default_imagenet_transforms()
     model = ViTForImageClassification.from_pretrained("google/vit-large-patch16-224-in21k")
     input_dim = (3, 224, 224)
@@ -153,6 +154,8 @@ def ViTLarge16ImageNet(features_nodes=None):
     }
 
 def ViTHuge14ImageNet(features_nodes=None):
+    from transformers import ViTForImageClassification
+
     train_transforms, test_transforms = _get_default_imagenet_transforms()
     model = ViTForImageClassification.from_pretrained("google/vit-huge-patch14-224-in21k")
     input_dim = (3, 224, 224)

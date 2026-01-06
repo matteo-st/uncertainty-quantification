@@ -11,7 +11,7 @@ def test_run_detection_dry_run(tmp_path):
         "--config-model",
         str(repo_root / "configs" / "models" / "cifar10_resnet34.yml"),
         "--config-detection",
-        str(repo_root / "configs" / "postprocessors" / "clustering.yml"),
+        str(repo_root / "configs" / "postprocessors" / "conformal" / "cifar10_resnet34.yml"),
         "--root-dir",
         str(tmp_path / "results"),
         "--dry-run",
