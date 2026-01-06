@@ -455,9 +455,10 @@ class EvaluatorAblation:
                 )
                 t1 = time.time()
                 print(f"Total time: {t1 - t0:.2f} seconds")
-                if self.quantizer_metric == "likelihood":
-                # for likelihood, we want to maximize it
-                    best_init = torch.argmax(self.detector.clustering_algo.results.lower_bound).item()
+                clustering_algo = getattr(self.detector, "clustering_algo", None)
+                if self.quantizer_metric == "likelihood" and clustering_algo is not None:
+                    # for likelihood, we want to maximize it
+                    best_init = torch.argmax(clustering_algo.results.lower_bound).item()
                 else:
                     conf = self.detector(logits=self.values["res"]["logits"].to(self.detector.device))
                     metrics = compute_all_metrics(
@@ -466,9 +467,8 @@ class EvaluatorAblation:
                 )
 
                     best_init = int(np.argmax(metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(metrics[self.quantizer_metric])) 
-                if hasattr(self.detector, "clustering_algo"):
-                    
-                    self.detector.clustering_algo.best_init = best_init
+                if clustering_algo is not None:
+                    clustering_algo.best_init = best_init
             print("Fitting confidence intervals on calibration data")
             t0 = time.time()
             self.detector.fit(
@@ -728,7 +728,9 @@ class HyperparamsSearch(EvaluatorAblation):
 
 
             best_init = int(np.argmax(val_metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(val_metrics[self.quantizer_metric])) 
-            dec.clustering_algo.best_init = best_init
+            clustering_algo = getattr(dec, "clustering_algo", None)
+            if clustering_algo is not None:
+                clustering_algo.best_init = best_init
             val_metrics = pd.DataFrame(val_metrics)
            
             val_metrics.columns = [f"{col}_val_res" for col in val_metrics.columns]
@@ -810,13 +812,14 @@ class HyperparamsSearch(EvaluatorAblation):
                 weight_std=self.weight_std,
             )
 
-            if self.quantizer_metric == "likelihood":
+            clustering_algo = getattr(dec, "clustering_algo", None)
+            if self.quantizer_metric == "likelihood" and clustering_algo is not None:
                 # for likelihood, we want to maximize it
-                best_init = torch.argmax(dec.clustering_algo.results.lower_bound).item()
+                best_init = torch.argmax(clustering_algo.results.lower_bound).item()
             else:
-
                 best_init = int(np.argmax(metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(metrics[self.quantizer_metric])) 
-            dec.clustering_algo.best_init = best_init
+            if clustering_algo is not None:
+                clustering_algo.best_init = best_init
             val_metrics = pd.DataFrame(metrics)
         
            
@@ -899,11 +902,11 @@ class HyperparamsSearch(EvaluatorAblation):
                     )
                     results = pd.DataFrame(results)
                     
-                    if self.quantizer_metric == "likelihood":
-                # for likelihood, we want to maximize it
-                        best_init = torch.argmax(dec.clustering_algo.results.lower_bound).item()
+                    clustering_algo = getattr(dec, "clustering_algo", None)
+                    if self.quantizer_metric == "likelihood" and clustering_algo is not None:
+                        # for likelihood, we want to maximize it
+                        best_init = torch.argmax(clustering_algo.results.lower_bound).item()
                     else:
-
                         best_init = int(np.argmax(results[self.metric]) if self.metric_direction == "max" else np.argmin(results[self.metric])) 
                     # dec.clustering_algo.best_init = best_init
                     results = results.iloc[best_init].to_dict()

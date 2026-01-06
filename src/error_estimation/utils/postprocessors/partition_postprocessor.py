@@ -60,6 +60,7 @@ class PartitionPostprocessor(BasePostprocessor):
 
         ## Quantize Parameters
         self.n_clusters = cfg["n_clusters"]
+        self.n_min = cfg.get("n_min", 1)
         self.cov_type = cfg.get("cov_type", None)
         self.init_scheme = cfg.get("init_scheme", None)
         self.n_init = cfg.get("n_init", None)
@@ -139,7 +140,7 @@ class PartitionPostprocessor(BasePostprocessor):
             
             )
 
-        elif self.method in ["unif-width", "unif-mass"]:
+        elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score"]:
             pass
         else:
             raise ValueError(f"Unsupported method: {self.method}")
@@ -172,6 +173,10 @@ class PartitionPostprocessor(BasePostprocessor):
                 embs, _ = torch.max(probs, dim=1)
 
                 return embs
+            elif self.quantiz_space == "msp":
+                probs = torch.softmax(logits / self.temperature, dim=1)
+                embs, _ = torch.max(probs, dim=1)
+                return -embs
         else:
             self.model.to(self.device)
             logits = self.model(x)
@@ -184,6 +189,10 @@ class PartitionPostprocessor(BasePostprocessor):
                 embs = torch.softmax(logits / self.temperature, dim=1)
             elif self.quantiz_space == "logits":
                 embs = logits
+            elif self.quantiz_space == "msp":
+                probs = torch.softmax(logits / self.temperature, dim=1)
+                embs, _ = torch.max(probs, dim=1)
+                embs = -embs
             else:
                 raise ValueError("Unsupported quantiz_space")
 
@@ -217,6 +226,8 @@ class PartitionPostprocessor(BasePostprocessor):
     def predict_clusters(self, x=None, logits=None):
 
         embs = self._extract_embeddings(x, logits)
+        if embs.dim() > 1 and embs.size(1) == 1:
+            embs = embs.squeeze(1)
 
         if self.method == "unif-width":
             cluster = torch.floor(embs * self.n_clusters).long()
@@ -228,6 +239,10 @@ class PartitionPostprocessor(BasePostprocessor):
             # bucketize returns integers in [0, n_clusters-1]
             cluster = torch.bucketize(embs, bin_edges)
             return cluster  # (N,)
+        elif self.method == "quantile-merge":
+            bin_edges = self.bin_edges.to(embs.device)
+            cluster = torch.bucketize(embs, bin_edges[1:-1])
+            return cluster
 
         
         else:
@@ -284,11 +299,50 @@ class PartitionPostprocessor(BasePostprocessor):
         elif self.method == "unif-width":
             clusters = self.predict_clusters(logits=logits)
         elif self.method == "unif-mass":
+            if all_embs.dim() > 1 and all_embs.size(1) == 1:
+                all_embs = all_embs.squeeze(1)
              # internal quantiles: (n_clusters - 1) edges
             q = torch.linspace(0.0, 1.0, self.n_clusters + 1, device=all_embs.device)[1:-1]
             bin_edges = torch.quantile(all_embs, q)
             self.bin_edges = bin_edges.detach().cpu()  # store on CPU
             clusters = torch.bucketize(all_embs, self.bin_edges.to(all_embs.device))
+            clusters = clusters.to(self.device, dtype=torch.long)
+        elif self.method == "quantile-merge":
+            embs = all_embs.squeeze()
+            if embs.ndim != 1:
+                raise ValueError("quantile-merge requires 1D embeddings")
+            q = torch.linspace(0.0, 1.0, self.n_clusters + 1, device=embs.device)[1:-1]
+            if embs.numel() == 1:
+                quantiles = torch.tensor([], device=embs.device)
+            else:
+                quantiles = torch.quantile(embs, q)
+            edges = torch.cat(
+                [
+                    torch.tensor([-float("inf")], device=embs.device),
+                    quantiles,
+                    torch.tensor([float("inf")], device=embs.device),
+                ]
+            )
+            bins = torch.bucketize(embs, edges[1:-1])
+            counts = torch.bincount(bins, minlength=self.n_clusters).cpu().numpy()
+            merged_edges = [-float("inf")]
+            running = 0
+            for i in range(self.n_clusters):
+                running += counts[i]
+                if running >= self.n_min:
+                    merged_edges.append(edges[i + 1].item())
+                    running = 0
+            if merged_edges[-1] != float("inf"):
+                merged_edges[-1] = float("inf")
+            cleaned = [merged_edges[0]]
+            for edge in merged_edges[1:]:
+                if edge > cleaned[-1]:
+                    cleaned.append(edge)
+                elif edge == float("inf"):
+                    cleaned[-1] = float("inf")
+            self.bin_edges = torch.tensor(cleaned, dtype=embs.dtype, device=self.device)
+            self.n_clusters = len(cleaned) - 1
+            clusters = torch.bucketize(embs, self.bin_edges[1:-1])
             clusters = clusters.to(self.device, dtype=torch.long)
         else:
             raise ValueError("Unsupported method")
@@ -298,6 +352,8 @@ class PartitionPostprocessor(BasePostprocessor):
     def fit(self, logits, detector_labels, dataloader=None, fit_clustering=True):
 
         all_embs = self._extract_embeddings(logits=logits)
+        if self.method == "raw-score":
+            return
     
         if fit_clustering:
             clusters = self.fit_quantizer(all_embs=all_embs, detector_labels=detector_labels, logits=logits)
@@ -440,6 +496,13 @@ class PartitionPostprocessor(BasePostprocessor):
         If a single sample is provided, output is (bs,).
         If many samples, output is (bs, n).
         """
+        if self.method == "raw-score":
+            scores = self._extract_embeddings(x, logits)
+            if scores.dim() > 1 and scores.size(-1) == 1:
+                scores = scores.squeeze(-1)
+            if scores.dim() == 1:
+                return scores.unsqueeze(0)
+            raise ValueError("raw-score expects 1D embeddings")
         # cluster: (bs,) for one sample or (bs, n) for many
         # cluster = self.predict_clusters(x, logits)
         cluster = self.predict_clusters(x, logits).squeeze(0)
