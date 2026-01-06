@@ -1,6 +1,6 @@
 
-name: cifar10
-num_classes: 10
+name: cifar100
+num_classes: 100
 pre_size: 32
 image_size: 32
 split_names: [res, cal, test]
@@ -18,4 +18,3 @@ n_epochs:
 seed_split : [9]
 batch_size_train: 252
 batch_size_test: 252
-
