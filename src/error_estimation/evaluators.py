@@ -67,7 +67,10 @@ class EvaluatorAblation:
         self.verbose = verbose
 
         self.metric = metric
-        self.quantizer_metric = quantizer_metric
+        if quantizer_metric in [None, "same"]:
+            self.quantizer_metric = metric
+        else:
+            self.quantizer_metric = quantizer_metric
         if metric in ["fpr", "aurc"]:
             self.metric_direction = "min"
         else:
