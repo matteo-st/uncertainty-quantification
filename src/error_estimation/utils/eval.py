@@ -518,6 +518,22 @@ class AblationDetector:
     def get_scores(self, detectors, n_samples, list_configs, logits=None):
 
         n_det = len(detectors)
+        def _resolve_indices(dataset):
+            indices = getattr(dataset, "indices", None)
+            if indices is None:
+                return None
+            indices = list(indices)
+            base_dataset = getattr(dataset, "dataset", None)
+            if base_dataset is None:
+                return indices
+            base_indices = _resolve_indices(base_dataset)
+            if base_indices is None:
+                return indices
+            return [base_indices[i] for i in indices]
+
+        split_indices = _resolve_indices(self.loader.dataset)
+        if split_indices is not None:
+            n_samples = len(split_indices)
         if os.path.exists(self.latent_path):
 
             pkg = torch.load(self.latent_path, map_location="cpu")
@@ -525,6 +541,16 @@ class AblationDetector:
             all_labels = pkg["labels"].numpy()                  # (N,)
             all_model_preds  = pkg["model_preds"].numpy()             # (N,)
             detector_labels_arr = (all_model_preds != all_labels)  # bool array
+            if split_indices is not None:
+                if max(split_indices) >= logits.size(0):
+                    raise ValueError(
+                        f"Latent cache {self.latent_path} does not cover split indices "
+                        f"(max {max(split_indices)} >= {logits.size(0)})."
+                    )
+                logits = logits[split_indices]
+                all_labels = all_labels[split_indices]
+                all_model_preds = all_model_preds[split_indices]
+                detector_labels_arr = (all_model_preds != all_labels)  # bool array
 
             if self.postprocessor_name in ["doctor", "odin", "relu"]:
 
