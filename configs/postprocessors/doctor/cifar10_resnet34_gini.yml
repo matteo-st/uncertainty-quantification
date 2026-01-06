@@ -9,6 +9,6 @@ experience_args:
     res: None
     cal: 1
   transform:
-    res: None
+    res: test
     cal: test
 postprocessor_grid: {}
