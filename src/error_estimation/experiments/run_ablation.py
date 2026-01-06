@@ -22,8 +22,16 @@ from error_estimation.utils.helper import setup_seeds
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
+from error_estimation.utils.results_io import (
+    append_summary_csv,
+    build_metrics_payload,
+    build_run_meta,
+    build_summary_row,
+    flatten_metrics,
+    select_best_row,
+    write_metrics_json,
+)
 from error_estimation.utils.tracking import MLflowTracker, flatten_config
-from error_estimation.experiments.run_detection import _collect_metrics
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,6 +149,14 @@ def run(args: argparse.Namespace) -> None:
                 }
             )
         )
+        tracker.log_tags(
+            {
+                "dataset": data_cfg.get("name"),
+                "model": model_cfg.get("model_name"),
+                "postprocessor": detection_cfg.get("name"),
+                "run_tag": args.run_tag,
+            }
+        )
         tracker.log_artifact(metadata_path)
         for cfg_path in copied_configs.values():
             tracker.log_artifact(cfg_path)
@@ -186,11 +202,13 @@ def run(args: argparse.Namespace) -> None:
             for p in model.parameters():
                 p.requires_grad_(False)
 
-            run_dir = root_dir / f"seed-split-{seed_split}"
-            ensure_dir(run_dir)
+            seed_dir = root_dir / f"seed-split-{seed_split}"
+            ensure_dir(seed_dir)
             latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg)
 
             for n_cal in n_cal_values:
+                run_dir = seed_dir / f"n-cal-{n_cal}"
+                ensure_dir(run_dir)
                 res_loader, cal_loader, test_loader = prepare_ablation_dataloaders(
                     dataset=dataset,
                     seed_split=seed_split,
@@ -218,12 +236,35 @@ def run(args: argparse.Namespace) -> None:
                     n_cal=n_cal,
                     seed_split=seed_split,
                 )
-                evaluator.run()
+                child_tags = {
+                    "seed_split": seed_split,
+                    "n_cal": n_cal,
+                }
+                with tracker.child_run(run_name=f"seed-split-{seed_split}_n-cal-{n_cal}", tags=child_tags):
+                    evaluator.run()
+                    best_row = select_best_row(evaluator.results, evaluator.metric, evaluator.metric_direction)
+                    meta = build_run_meta(
+                        data_cfg,
+                        model_cfg,
+                        detection_cfg,
+                        seed_split,
+                        n_cal=n_cal,
+                        run_tag=args.run_tag,
+                        extra={"result_dir": str(run_dir)},
+                    )
+                    payload = build_metrics_payload(meta, best_row)
+                    metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
+                    append_summary_csv(root_dir / "summary.csv", build_summary_row(meta, best_row))
 
-            metrics = _collect_metrics(run_dir)
-            if metrics:
-                tracker.log_metrics(metrics, step=seed_split)
-            tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}")
+                    metrics = flatten_metrics(payload.get("metrics", {}))
+                    if metrics:
+                        tracker.log_metrics(metrics, step=seed_split)
+                    tracker.log_artifact(metrics_path)
+                    tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}/n-cal-{n_cal}")
+
+        summary_path = root_dir / "summary.csv"
+        if summary_path.exists():
+            tracker.log_artifact(summary_path)
 
 
 def main(argv: list[str] | None = None) -> None:

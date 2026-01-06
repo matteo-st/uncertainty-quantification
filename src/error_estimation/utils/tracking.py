@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from contextlib import contextmanager
 
 import mlflow
 
@@ -63,6 +64,11 @@ class MLflowTracker:
             return
         mlflow.log_metrics(metrics, step=step)
 
+    def log_tags(self, tags: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        mlflow.set_tags({k: _coerce_param(v) for k, v in tags.items()})
+
     def log_artifact(self, path: str | Path, artifact_path: str | None = None) -> None:
         if not self.enabled:
             return
@@ -72,3 +78,13 @@ class MLflowTracker:
         if not self.enabled:
             return
         mlflow.log_artifacts(str(path), artifact_path=artifact_path)
+
+    @contextmanager
+    def child_run(self, run_name: str | None = None, tags: dict[str, Any] | None = None):
+        if not self.enabled:
+            yield None
+            return
+        with mlflow.start_run(run_name=run_name, nested=True):
+            if tags:
+                self.log_tags(tags)
+            yield

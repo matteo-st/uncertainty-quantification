@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -22,6 +23,15 @@ from error_estimation.utils.helper import setup_seeds
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
+from error_estimation.utils.results_io import (
+    append_summary_csv,
+    build_metrics_payload,
+    build_run_meta,
+    build_summary_row,
+    flatten_metrics,
+    select_best_row,
+    write_metrics_json,
+)
 from error_estimation.utils.tracking import MLflowTracker, flatten_config
 
 METRIC_KEYS = [
@@ -29,14 +39,22 @@ METRIC_KEYS = [
     "tpr",
     "roc_auc",
     "aurc",
+    "aupr_in",
+    "aupr_out",
+    "accuracy",
+    "model_acc",
     "aupr_err",
     "aupr_success",
-    "model_acc",
+    "thr",
 ]
 
 
 def _collect_metrics(result_dir: Path) -> dict[str, float]:
     metrics: dict[str, float] = {}
+    metrics_path = result_dir / "metrics.json"
+    if metrics_path.exists():
+        payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+        return flatten_metrics(payload.get("metrics", {}))
     csv_candidates = list(result_dir.glob("results_opt-*.csv"))
     csv_candidates += list(result_dir.glob("hyperparams_results_opt-*.csv"))
     if not csv_candidates:
@@ -195,6 +213,15 @@ def run(args: argparse.Namespace) -> None:
                 }
             )
         )
+        tracker.log_tags(
+            {
+                "dataset": data_cfg.get("name"),
+                "model": model_cfg.get("model_name"),
+                "postprocessor": detection_cfg.get("name"),
+                "mode": args.mode,
+                "run_tag": args.run_tag,
+            }
+        )
         tracker.log_artifact(metadata_path)
         for cfg_path in copied_configs.values():
             tracker.log_artifact(cfg_path)
@@ -256,28 +283,54 @@ def run(args: argparse.Namespace) -> None:
             if args.mode == "search_res":
                 cfg_detection_run["experience_args"]["ratio_res_split"] = 1.0
 
-            evaluator = HyperparamsSearch(
-                model=model,
-                cfg_detection=cfg_detection_run,
-                cfg_dataset=data_cfg,
-                device=device,
-                res_loader=res_loader,
-                cal_loader=cal_loader,
-                test_loader=test_loader,
-                result_folder=str(run_dir),
-                metric=args.metric,
-                quantizer_metric=args.quantizer_metric,
-                latent_paths=latent_paths,
-                seed_split=seed_split,
-                mode=args.mode,
-                verbose=False,
-            )
-            evaluator.run()
+            child_tags = {
+                "seed_split": seed_split,
+                "mode": args.mode,
+                "metric": args.metric,
+                "quantizer_metric": args.quantizer_metric,
+            }
+            with tracker.child_run(run_name=f"seed-split-{seed_split}", tags=child_tags):
+                evaluator = HyperparamsSearch(
+                    model=model,
+                    cfg_detection=cfg_detection_run,
+                    cfg_dataset=data_cfg,
+                    device=device,
+                    res_loader=res_loader,
+                    cal_loader=cal_loader,
+                    test_loader=test_loader,
+                    result_folder=str(run_dir),
+                    metric=args.metric,
+                    quantizer_metric=args.quantizer_metric,
+                    latent_paths=latent_paths,
+                    seed_split=seed_split,
+                    mode=args.mode,
+                    verbose=False,
+                )
+                evaluator.run()
 
-            metrics = _collect_metrics(run_dir)
-            if metrics:
-                tracker.log_metrics(metrics, step=seed_split)
-            tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}")
+                best_row = select_best_row(evaluator.results, args.metric, evaluator.metric_direction)
+                meta = build_run_meta(
+                    data_cfg,
+                    model_cfg,
+                    cfg_detection_run,
+                    seed_split,
+                    mode=args.mode,
+                    run_tag=args.run_tag,
+                    extra={"result_dir": str(run_dir)},
+                )
+                payload = build_metrics_payload(meta, best_row)
+                metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
+                append_summary_csv(root_dir / "summary.csv", build_summary_row(meta, best_row))
+
+                metrics = flatten_metrics(payload.get("metrics", {}))
+                if metrics:
+                    tracker.log_metrics(metrics, step=seed_split)
+                tracker.log_artifact(metrics_path)
+                tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}")
+
+        summary_path = root_dir / "summary.csv"
+        if summary_path.exists():
+            tracker.log_artifact(summary_path)
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -300,18 +300,18 @@ class EvaluatorAblation:
 
     def save_results(self, result_file, results, mode="append"):
         """
-        Save `results` (a pandas DataFrame) to CSV.
+        Save `results` (a pandas DataFrame) to JSONL or CSV based on the file extension.
 
         Parameters
         ----------
         result_file : str | Path
-            Target CSV path, e.g. ".../results.csv".
+            Target path, e.g. ".../results.jsonl" or ".../results.csv".
         results : pd.DataFrame
             Data to write.
         mode : {"append", "increment", "overwrite"}, default "append"
-            - "append": append to `result_file` (create if missing). Writes header only if file doesn't exist.
+            - "append": append to `result_file` (create if missing). For CSV, writes header only if file doesn't exist.
             - "increment": do not touch existing files; write to the next available incremented filename:
-                results.csv, results_1.csv, results_2.csv, ...
+                results.jsonl, results_1.jsonl, results_2.jsonl, ...
             - "overwrite": write to `result_file`, replacing any existing file.
 
         Returns
@@ -321,7 +321,9 @@ class EvaluatorAblation:
         """
         from pathlib import Path
         import re
+        import json
         import pandas as pd
+        from error_estimation.utils.results_io import _coerce_value
 
         # result_file = os.path.join(self.result_folder, f"{result_file}_")
         p = Path(result_file)
@@ -372,10 +374,42 @@ class EvaluatorAblation:
                         max_i = max(max_i, int(m.group(1)))
 
             target = p if max_i < 0 else p.with_name(f"{base_stem}_{max_i + 1}{suffix}")
+            if p.suffix == ".jsonl":
+                records = [
+                    {k: _coerce_value(v) for k, v in row.items()}
+                    for row in results.to_dict(orient="records")
+                ]
+                with target.open("w", encoding="utf-8") as f:
+                    for record in records:
+                        f.write(json.dumps(record) + "\n")
+                if self.verbose:
+                    print(f"[save_results] wrote (increment) -> {target}")
+                return target
             results.to_csv(target, header=True, index=False)
             if self.verbose:
                 print(f"[save_results] wrote (increment) -> {target}")
             return target
+
+        if p.suffix == ".jsonl":
+            records = [
+                {k: _coerce_value(v) for k, v in row.items()}
+                for row in results.to_dict(orient="records")
+            ]
+            if mode == "overwrite":
+                with p.open("w", encoding="utf-8") as f:
+                    for record in records:
+                        f.write(json.dumps(record) + "\n")
+                if self.verbose:
+                    print(f"[save_results] wrote (overwrite) -> {p}")
+                return p
+
+            # mode == "append"
+            with p.open("a", encoding="utf-8") as f:
+                for record in records:
+                    f.write(json.dumps(record) + "\n")
+            if self.verbose:
+                print(f"[save_results] wrote (append) -> {p}")
+            return p
 
         if mode == "overwrite":
             results.to_csv(p, header=True, index=False)
@@ -512,14 +546,16 @@ class EvaluatorAblation:
             print(f"Total time: {t1 - t0:.2f} seconds")
 
 
-        result_file = f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.csv"
+        result_file = (
+            f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
+            f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
+            f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
+        )
+        self.results = pd.merge(self.cal_results, self.test_results, how="outer")
         self.save_results(
             result_file=os.path.join(self.result_folder, result_file),
-            results=pd.merge(
-                self.cal_results, 
-                self.test_results,
-                how="outer")               
-            )
+            results=self.results,
+        )
 
 
 class HyperparamsSearch(EvaluatorAblation):
@@ -553,7 +589,7 @@ class HyperparamsSearch(EvaluatorAblation):
         self.cal_results = self.best_result
 
         self.save_results(
-            result_file=os.path.join(self.result_folder, "hyperparams_results.csv"),
+            result_file=os.path.join(self.result_folder, "hyperparams_results.jsonl"),
             results=hyperparam_results
             )
     def search_cross_validation(self):
@@ -635,7 +671,7 @@ class HyperparamsSearch(EvaluatorAblation):
         # self.cal_results = self.best_result
 
         self.save_results(
-            result_file=os.path.join(self.result_folder, "hyperparams_results.csv"),
+            result_file=os.path.join(self.result_folder, "hyperparams_results.jsonl"),
             results=hyperparam_results
             )
 
@@ -713,7 +749,7 @@ class HyperparamsSearch(EvaluatorAblation):
         # self.cal_results = self.best_result
 
         self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.csv"),
+            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"),
             results=hyperparam_results
             )
         
@@ -801,7 +837,7 @@ class HyperparamsSearch(EvaluatorAblation):
         # self.cal_results = self.best_result
 
         self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.csv"),
+            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"),
             results=hyperparam_results
             )
 
@@ -889,7 +925,7 @@ class HyperparamsSearch(EvaluatorAblation):
         # self.cal_results = self.best_result
 
         self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}_n-folds-{self.n_folds}.csv"),
+            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}_n-folds-{self.n_folds}.jsonl"),
             results=hyperparam_results
             )
     
@@ -1023,16 +1059,16 @@ class HyperparamsSearch(EvaluatorAblation):
         # if self.hyperparam_file is not None:
         #     result_file = self.hyperparam_file[:-3] + f"_opt_{self.metric}.csv"
         # else:
-        result_file = f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.csv"
+        result_file = (
+            f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
+            f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
+            f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
+        )
+        self.results = pd.merge(self.cal_results, self.test_results, how="outer")
         self.save_results(
             result_file=os.path.join(self.result_folder, result_file),
-            results=pd.merge(
-                self.cal_results, 
-                self.test_results,
-                how="outer")
-                # self.val_results.loc[:, self.val_results.columns.difference(cfg_cols)]
-                
-            )
+            results=self.results,
+        )
         # self.save_results(
         #     result_file=os.path.join(self.result_folder, f"results_opt_{self.metric}.csv"),
         #     results=self.train_results
