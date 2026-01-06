@@ -27,6 +27,8 @@ from error_estimation.utils.results_io import (
     build_metrics_payload,
     build_run_meta,
     build_summary_row,
+    build_results_root,
+    default_run_tag,
     flatten_metrics,
     select_best_row,
     write_metrics_json,
@@ -82,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gpu-id", "--gpu_id", dest="gpu_id", type=int, default=0, help="GPU ID to use")
     parser.add_argument("--seed-splits", nargs="+", type=int, default=None, help="Optional override for seed splits")
     parser.add_argument("--run-tag", default=None, help="Optional subfolder name under root_dir")
+    parser.add_argument(
+        "--save-search-results",
+        action="store_true",
+        help="Persist full search results (search.jsonl) per variant",
+    )
     parser.add_argument("--num-threads", type=int, default=None, help="Force CPU thread count")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     parser.add_argument("--dry-run", action="store_true", help="Validate configs and exit")
@@ -113,21 +120,21 @@ def run(args: argparse.Namespace) -> None:
         if key not in detection_cfg["ablation_args"]:
             raise KeyError(f"Missing detection.ablation_args.{key}")
 
-    root_dir = Path(args.root_dir)
-    if args.run_tag:
-        root_dir = root_dir / args.run_tag
-    ensure_dir(root_dir)
+    results_root = build_results_root(args.root_dir, data_cfg, model_cfg, detection_cfg)
+    run_tag = args.run_tag or default_run_tag()
+    run_root = results_root / "runs" / run_tag
+    ensure_dir(run_root)
 
-    logger = setup_logging(root_dir, level=args.log_level)
-    logger.info("Starting ablation in %s", root_dir)
+    logger = setup_logging(run_root, level=args.log_level)
+    logger.info("Starting ablation in %s", run_root)
 
     config_paths = {
         "dataset": args.config_dataset,
         "model": args.config_model,
         "detection": args.config_detection,
     }
-    copied_configs = copy_configs(root_dir, config_paths)
-    metadata_path = write_run_metadata(root_dir, args, copied_configs)
+    copied_configs = copy_configs(run_root, config_paths)
+    metadata_path = write_run_metadata(run_root, args, copied_configs)
 
     tracker = MLflowTracker(
         enabled=not args.no_mlflow,
@@ -140,18 +147,18 @@ def run(args: argparse.Namespace) -> None:
         tracker.log_params(
             flatten_config(
                 {
-                    "dataset": dict(data_cfg),
-                    "model": dict(model_cfg),
-                    "detection": dict(detection_cfg),
-                }
-            )
+                "dataset": dict(data_cfg),
+                "model": dict(model_cfg),
+                "detection": dict(detection_cfg),
+            }
+        )
         )
         tracker.log_tags(
             {
                 "dataset": data_cfg.get("name"),
                 "model": model_cfg.get("model_name"),
                 "postprocessor": detection_cfg.get("name"),
-                "run_tag": args.run_tag,
+                "run_tag": run_tag,
             }
         )
         tracker.log_artifact(metadata_path)
@@ -208,14 +215,14 @@ def run(args: argparse.Namespace) -> None:
             )
 
             latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg)
-            seed_dir = root_dir / f"seed-split-{seed_split}"
+            seed_dir = run_root / "variants"
             ensure_dir(seed_dir)
 
             opt_temperature = detection_cfg["postprocessor_args"]["temperature"]
             opt_n_clusters = detection_cfg["postprocessor_args"]["n_clusters"]
 
             for n_clusters in detection_cfg["ablation_args"]["n_clusters"]:
-                run_dir = seed_dir / f"n-clusters-{n_clusters}"
+                run_dir = seed_dir / f"n-clusters-{n_clusters}" / f"seed-split-{seed_split}"
                 ensure_dir(run_dir)
                 cfg_detection_run = deepcopy(detection_cfg)
                 cfg_detection_run["postprocessor_args"]["temperature"] = opt_temperature
@@ -234,6 +241,7 @@ def run(args: argparse.Namespace) -> None:
                     n_cal=data_cfg["n_samples"]["cal"],
                     var_ablation="temperature",
                     seed_split=seed_split,
+                    save_search_results=args.save_search_results,
                 )
                 child_tags = {
                     "seed_split": seed_split,
@@ -251,7 +259,7 @@ def run(args: argparse.Namespace) -> None:
                         model_cfg,
                         cfg_detection_run,
                         seed_split,
-                        run_tag=args.run_tag,
+                        run_tag=run_tag,
                         extra={
                             "result_dir": str(run_dir),
                             "ablation_param": "n_clusters",
@@ -260,15 +268,18 @@ def run(args: argparse.Namespace) -> None:
                     )
                     payload = build_metrics_payload(meta, best_row)
                     metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
-                    append_summary_csv(root_dir / "summary.csv", build_summary_row(meta, best_row))
+                    append_summary_csv(results_root / "summary.csv", build_summary_row(meta, best_row))
                     metrics = flatten_metrics(payload.get("metrics", {}))
                     if metrics:
                         tracker.log_metrics(metrics, step=seed_split)
                     tracker.log_artifact(metrics_path)
-                    tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}/n-clusters-{n_clusters}")
+                    tracker.log_artifacts(
+                        run_dir,
+                        artifact_path=f"results/{run_tag}/variants/n-clusters-{n_clusters}/seed-split-{seed_split}",
+                    )
 
             for temperature in detection_cfg["ablation_args"]["temperature"]:
-                run_dir = seed_dir / f"temperature-{temperature}"
+                run_dir = seed_dir / f"temperature-{temperature}" / f"seed-split-{seed_split}"
                 ensure_dir(run_dir)
                 cfg_detection_run = deepcopy(detection_cfg)
                 cfg_detection_run["postprocessor_args"]["temperature"] = temperature
@@ -287,6 +298,7 @@ def run(args: argparse.Namespace) -> None:
                     n_cal=data_cfg["n_samples"]["cal"],
                     var_ablation="n_clusters",
                     seed_split=seed_split,
+                    save_search_results=args.save_search_results,
                 )
                 child_tags = {
                     "seed_split": seed_split,
@@ -304,7 +316,7 @@ def run(args: argparse.Namespace) -> None:
                         model_cfg,
                         cfg_detection_run,
                         seed_split,
-                        run_tag=args.run_tag,
+                        run_tag=run_tag,
                         extra={
                             "result_dir": str(run_dir),
                             "ablation_param": "temperature",
@@ -313,14 +325,17 @@ def run(args: argparse.Namespace) -> None:
                     )
                     payload = build_metrics_payload(meta, best_row)
                     metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
-                    append_summary_csv(root_dir / "summary.csv", build_summary_row(meta, best_row))
+                    append_summary_csv(results_root / "summary.csv", build_summary_row(meta, best_row))
                     metrics = flatten_metrics(payload.get("metrics", {}))
                     if metrics:
                         tracker.log_metrics(metrics, step=seed_split)
                     tracker.log_artifact(metrics_path)
-                    tracker.log_artifacts(run_dir, artifact_path=f"results/seed-split-{seed_split}/temperature-{temperature}")
+                    tracker.log_artifacts(
+                        run_dir,
+                        artifact_path=f"results/{run_tag}/variants/temperature-{temperature}/seed-split-{seed_split}",
+                    )
 
-        summary_path = root_dir / "summary.csv"
+        summary_path = results_root / "summary.csv"
         if summary_path.exists():
             tracker.log_artifact(summary_path)
 

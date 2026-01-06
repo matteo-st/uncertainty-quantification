@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,17 @@ METRIC_BASE_KEYS = {
     "aupr_err",
     "aupr_success",
 }
+
+
+def build_results_root(base_dir: str | Path, data_cfg: dict, model_cfg: dict, detection_cfg: dict) -> Path:
+    model_name = model_cfg.get("model_name", "model")
+    preprocessor = model_cfg.get("preprocessor")
+    model_dir = f"{model_name}_{preprocessor}" if preprocessor else model_name
+    return Path(base_dir) / str(data_cfg.get("name", "dataset")) / model_dir / str(detection_cfg.get("name", "postprocessor"))
+
+
+def default_run_tag(prefix: str = "run") -> str:
+    return f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
 def _coerce_value(value: Any) -> Any:

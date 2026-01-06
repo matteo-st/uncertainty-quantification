@@ -15,12 +15,16 @@ def test_cli_run_dry_run(tmp_path):
         str(repo_root / "configs" / "postprocessors" / "conformal" / "cifar10_resnet34.yml"),
         "--root-dir",
         str(tmp_path / "run"),
+        "--run-tag",
+        "dry-run",
         "--dry-run",
         "--no-mlflow",
     ]
     main(args)
-    assert (tmp_path / "run" / "run.json").exists()
-    assert (tmp_path / "run" / "configs" / "dataset.yml").exists()
+    run_json = list((tmp_path / "run").rglob("run.json"))
+    assert run_json
+    dataset_cfg = list((tmp_path / "run").rglob("configs/dataset.yml"))
+    assert dataset_cfg
 
 
 def test_cli_ablation_dry_run(tmp_path):
@@ -35,11 +39,14 @@ def test_cli_ablation_dry_run(tmp_path):
         str(repo_root / "configs" / "postprocessors" / "clustering" / "cifar10_resnet34_gmm.yml"),
         "--root-dir",
         str(tmp_path / "ablation"),
+        "--run-tag",
+        "dry-run",
         "--dry-run",
         "--no-mlflow",
     ]
     main(args)
-    assert (tmp_path / "ablation" / "run.json").exists()
+    run_json = list((tmp_path / "ablation").rglob("run.json"))
+    assert run_json
 
 
 def test_cli_ablation_hyperparams_dry_run(tmp_path):
@@ -61,8 +68,11 @@ def test_cli_ablation_hyperparams_dry_run(tmp_path):
         ),
         "--root-dir",
         str(tmp_path / "ablation-hyperparams"),
+        "--run-tag",
+        "dry-run",
         "--dry-run",
         "--no-mlflow",
     ]
     main(args)
-    assert (tmp_path / "ablation-hyperparams" / "run.json").exists()
+    run_json = list((tmp_path / "ablation-hyperparams").rglob("run.json"))
+    assert run_json

@@ -44,6 +44,8 @@ class EvaluatorAblation:
             seed_split=0,
             verbose = True,
             mode="search",
+            save_search_results: bool = False,
+            save_run_results: bool = False,
             ):
 
         """
@@ -98,6 +100,8 @@ class EvaluatorAblation:
         self.weight_std = self.cfg_detection.get("experience_args", {}).get("weight_std", 0.0)
         self.calibrate = self.cfg_detection.get("postprocessor_args", {}).get("calibrate", False)
         self.hyperparam_combination = list(make_grid(self.cfg_detection, key ="postprocessor_grid")) 
+        self.save_search_results = save_search_results
+        self.save_run_results = save_run_results
         # self.run()
 
    
@@ -546,16 +550,17 @@ class EvaluatorAblation:
             print(f"Total time: {t1 - t0:.2f} seconds")
 
 
-        result_file = (
-            f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
-            f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
-            f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
-        )
         self.results = pd.merge(self.cal_results, self.test_results, how="outer")
-        self.save_results(
-            result_file=os.path.join(self.result_folder, result_file),
-            results=self.results,
-        )
+        if self.save_run_results:
+            result_file = (
+                f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
+                f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
+                f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
+            )
+            self.save_results(
+                result_file=os.path.join(self.result_folder, result_file),
+                results=self.results,
+            )
 
 
 class HyperparamsSearch(EvaluatorAblation):
@@ -588,9 +593,10 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_cal'].values}")
         self.cal_results = self.best_result
 
-        self.save_results(
-            result_file=os.path.join(self.result_folder, "hyperparams_results.jsonl"),
-            results=hyperparam_results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=hyperparam_results,
             )
     def search_cross_validation(self):
 
@@ -670,9 +676,10 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_val_cross'].values}")
         # self.cal_results = self.best_result
 
-        self.save_results(
-            result_file=os.path.join(self.result_folder, "hyperparams_results.jsonl"),
-            results=hyperparam_results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=hyperparam_results,
             )
 
     def search_partition_on_val(self):
@@ -748,9 +755,10 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_val_res'].values}")
         # self.cal_results = self.best_result
 
-        self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"),
-            results=hyperparam_results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=hyperparam_results,
             )
         
     def search_partition_on_res(self):
@@ -836,9 +844,10 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_res'].values}")
         # self.cal_results = self.best_result
 
-        self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"),
-            results=hyperparam_results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=hyperparam_results,
             )
 
     def search_partition_cv(self):
@@ -924,9 +933,10 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_val_cross'].values}")
         # self.cal_results = self.best_result
 
-        self.save_results(
-            result_file=os.path.join(self.result_folder, f"hyperparams_results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}_weight-std-{self.weight_std}_mode-{self.mode}_n-folds-{self.n_folds}.jsonl"),
-            results=hyperparam_results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=hyperparam_results,
             )
     
 
@@ -1059,16 +1069,17 @@ class HyperparamsSearch(EvaluatorAblation):
         # if self.hyperparam_file is not None:
         #     result_file = self.hyperparam_file[:-3] + f"_opt_{self.metric}.csv"
         # else:
-        result_file = (
-            f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
-            f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
-            f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
-        )
         self.results = pd.merge(self.cal_results, self.test_results, how="outer")
-        self.save_results(
-            result_file=os.path.join(self.result_folder, result_file),
-            results=self.results,
-        )
+        if self.save_run_results:
+            result_file = (
+                f"results_opt-{self.metric}_qunatiz-metric-{self.quantizer_metric}"
+                f"-ratio-{self.ratio_res_split}_n-split-val-{self.n_split_val}"
+                f"_weight-std-{self.weight_std}_mode-{self.mode}.jsonl"
+            )
+            self.save_results(
+                result_file=os.path.join(self.result_folder, result_file),
+                results=self.results,
+            )
         # self.save_results(
         #     result_file=os.path.join(self.result_folder, f"results_opt_{self.metric}.csv"),
         #     results=self.train_results
