@@ -56,25 +56,31 @@ def write_run_metadata(
     return metadata_path
 
 
-def build_latent_paths(latent_dir: str, data_cfg: dict, detection_cfg: dict, seed_split: int) -> dict[str, str]:
-    latent_root = Path(latent_dir) / f"seed-split-{seed_split}"
+def build_latent_paths(latent_dir: str, data_cfg: dict, model_cfg: dict, detection_cfg: dict) -> dict[str, str]:
+    root_parts = [data_cfg["name"], model_cfg["model_name"]]
+    preprocessor = model_cfg.get("preprocessor")
+    if preprocessor:
+        root_parts.append(preprocessor)
+    latent_root = Path(latent_dir) / "_".join(root_parts)
     latent_root.mkdir(parents=True, exist_ok=True)
+
+    def _normalize_transform(value: str | None) -> str:
+        return "test" if value is None else str(value)
+
+    def _normalize_epochs(value: int | None) -> str:
+        return "1" if value is None else str(value)
+
+    def _path(transform: str | None, n_epochs: int | None) -> str:
+        transform_tag = _normalize_transform(transform)
+        epochs_tag = _normalize_epochs(n_epochs)
+        return str(latent_root / f"transform-{transform_tag}_n-epochs-{epochs_tag}" / "full.pt")
+
+    exp_args = detection_cfg.get("experience_args", {})
+    transforms = exp_args.get("transform", {})
+    n_epochs = exp_args.get("n_epochs", {})
+
     return {
-        "res": str(
-            latent_root
-            / (
-                f"res_n-samples-{data_cfg['n_samples']['res']}"
-                f"_transform-{detection_cfg['experience_args']['transform']['res']}"
-                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['res']}.pt"
-            )
-        ),
-        "cal": str(
-            latent_root
-            / (
-                f"cal_n-samples-{data_cfg['n_samples']['cal']}"
-                f"_transform-{detection_cfg['experience_args']['transform']['cal']}"
-                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['cal']}.pt"
-            )
-        ),
-        "test": str(latent_root / f"test_n-samples-{data_cfg['n_samples']['test']}.pt"),
+        "res": _path(transforms.get("res"), n_epochs.get("res")),
+        "cal": _path(transforms.get("cal"), n_epochs.get("cal")),
+        "test": _path(transforms.get("test", "test"), n_epochs.get("test", 1)),
     }

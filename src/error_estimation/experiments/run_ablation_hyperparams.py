@@ -191,7 +191,7 @@ def run(args: argparse.Namespace) -> None:
                 model_name=model_cfg["model_name"],
             )
 
-            latent_paths = build_latent_paths(args.latent_dir, data_cfg, detection_cfg, seed_split)
+            latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg)
             run_dir = root_dir / f"seed-split-{seed_split}"
             ensure_dir(run_dir)
 

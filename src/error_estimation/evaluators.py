@@ -9,6 +9,7 @@ from copy import deepcopy
 
 from sklearn.model_selection import StratifiedKFold
 from threadpoolctl import threadpool_limits
+from torch.utils.data import DataLoader
 
 
 
@@ -107,36 +108,74 @@ class EvaluatorAblation:
         if dataloader is None:
             return
         latent_path = self.latent_paths[f"{name}"]
+        def _resolve_indices(dataset):
+            indices = getattr(dataset, "indices", None)
+            if indices is None:
+                return None
+            indices = list(indices)
+            base_dataset = getattr(dataset, "dataset", None)
+            if base_dataset is None:
+                return indices
+            base_indices = _resolve_indices(base_dataset)
+            if base_indices is None:
+                return indices
+            return [base_indices[i] for i in indices]
 
+        def _unwrap_dataset(dataset):
+            while hasattr(dataset, "dataset"):
+                dataset = dataset.dataset
+            return dataset
+
+        split_indices = _resolve_indices(dataloader.dataset)
+        full_dataset = _unwrap_dataset(dataloader.dataset)
+        full_len = len(full_dataset)
+        n_epochs = self.n_epochs.get(f"{name}", 1)
+        if n_epochs is None:
+            n_epochs = 1
+
+        cached = None
         if os.path.exists(latent_path):
             pkg = torch.load(latent_path, map_location="cpu")
             all_logits = pkg["logits"].to(torch.float32)        # (N, C)
             all_labels = pkg["labels"]              # (N,)
-            all_model_preds  = pkg["model_preds"]# (N,)
-            all_detector_labels = (all_model_preds != all_labels).float()
-            # print("logits [0]", all_logits[:1])
-            # print("labels [0]", all_labels[:1])
+            all_model_preds = pkg["model_preds"]# (N,)
+            expected_len = full_len * n_epochs
+            if all_logits.size(0) == expected_len:
+                cached = (all_logits, all_labels, all_model_preds)
+            else:
+                print(
+                    f"Cached latents at {latent_path} have {all_logits.size(0)} samples, expected {expected_len}. Recomputing."
+                )
 
-        
-        else:
-                        
+        if cached is None:
             self.model.to(self.device)
             self.model.eval()
 
             all_model_preds = []
             all_labels = []
             all_logits = []
-     
+
+            if hasattr(dataloader.dataset, "dataset"):
+                full_loader = DataLoader(
+                    full_dataset,
+                    batch_size=dataloader.batch_size,
+                    shuffle=False,
+                    pin_memory=getattr(dataloader, "pin_memory", False),
+                    num_workers=getattr(dataloader, "num_workers", 0),
+                )
+            else:
+                full_loader = dataloader
+
             # os.makedirs("debug_aug", exist_ok=True)
-            for epoch in range(self.n_epochs[f"{name}"]):
+            for epoch in range(n_epochs):
                 with torch.no_grad():
-                    for batch, (inputs, targets) in tqdm(enumerate(dataloader), total=len(dataloader), desc="Getting Training Logits", disable=False):
+                    for batch, (inputs, targets) in tqdm(enumerate(full_loader), total=len(full_loader), desc="Getting Training Logits", disable=False):
                         # print("inputs [0]", inputs[0, :3, :3, :3])
                         # print("targets [0]", targets[:3])
                         # exit()
                         inputs = inputs.to(self.device)
                         # targets = targets.to(self.device)
-                    
+
                         logits = self.model(inputs).cpu()  # logits: [batch_size, num_classes]
                         model_preds = torch.argmax(logits, dim=1)
 
@@ -146,20 +185,12 @@ class EvaluatorAblation:
                         all_logits.append(logits)
                         all_labels.append(targets.cpu())
                         all_model_preds.append(model_preds)
-                 
 
-            
-            
             # all_model_preds = torch.cat(all_model_preds, dim=0)
             all_labels = torch.cat(all_labels, dim=0)
             all_model_preds = torch.cat(all_model_preds, dim=0)
-            all_detector_labels = (all_model_preds != all_labels).float()
             all_logits = torch.cat(all_logits, dim=0)
-      
-            # print("all logits 0:", all_logits[2, :10])
-            # print("all labels 0:", all_labels[:10])
-            # print("all model preds 0:", all_model_preds[:10])
-                    
+
             # AFTER (robust)
             parent = os.path.dirname(latent_path)
             os.makedirs(parent, exist_ok=True)
@@ -170,10 +201,37 @@ class EvaluatorAblation:
                     "logits": all_logits.cpu(),     # compact on disk
                     "labels": all_labels.cpu().to(torch.int64),
                     "model_preds": all_model_preds.cpu().to(torch.int64),
+                    "n_samples": full_len,
+                    "n_epochs": n_epochs,
                 },
                 tmp,
             )
             os.replace(tmp, latent_path)  # atomic rename
+        else:
+            all_logits, all_labels, all_model_preds = cached
+
+        if split_indices is not None:
+            if len(split_indices) == 0:
+                all_logits = all_logits[:0]
+                all_labels = all_labels[:0]
+                all_model_preds = all_model_preds[:0]
+            else:
+                if n_epochs > 1:
+                    expanded = []
+                    for epoch in range(n_epochs):
+                        offset = epoch * full_len
+                        expanded.extend([offset + idx for idx in split_indices])
+                    split_indices = expanded
+                max_idx = max(split_indices)
+                if max_idx >= all_logits.size(0):
+                    raise ValueError(
+                        f"Latent cache {latent_path} does not cover split indices (max {max_idx} >= {all_logits.size(0)})."
+                    )
+                all_logits = all_logits[split_indices]
+                all_labels = all_labels[split_indices]
+                all_model_preds = all_model_preds[split_indices]
+
+        all_detector_labels = (all_model_preds != all_labels).float()
 
         self.values[f"{name}"] = {"logits": all_logits, "detector_labels": all_detector_labels}
         if self.postprocessor_name in ["conformal", "partition"]:

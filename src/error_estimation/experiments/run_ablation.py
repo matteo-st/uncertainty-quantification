@@ -11,37 +11,19 @@ from error_estimation.evaluators import EvaluatorAblation
 from error_estimation.utils.config import Config
 from error_estimation.utils.datasets import get_dataset
 from error_estimation.utils.datasets.dataloader import prepare_ablation_dataloaders
-from error_estimation.utils.experiment import copy_configs, ensure_dir, set_num_threads, write_run_metadata
+from error_estimation.utils.experiment import (
+    build_latent_paths,
+    copy_configs,
+    ensure_dir,
+    set_num_threads,
+    write_run_metadata,
+)
 from error_estimation.utils.helper import setup_seeds
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
 from error_estimation.utils.tracking import MLflowTracker, flatten_config
 from error_estimation.experiments.run_detection import _collect_metrics
-
-
-def _latent_paths_for_cal(latent_dir: str, data_cfg: dict, detection_cfg: dict, seed_split: int, n_cal: int) -> dict[str, str]:
-    latent_root = Path(latent_dir) / f"seed-split-{seed_split}"
-    latent_root.mkdir(parents=True, exist_ok=True)
-    return {
-        "res": str(
-            latent_root
-            / (
-                f"res_n-samples-{data_cfg['n_samples']['res']}"
-                f"_transform-{detection_cfg['experience_args']['transform']['res']}"
-                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['res']}.pt"
-            )
-        ),
-        "cal": str(
-            latent_root
-            / (
-                f"cal_n-samples-{n_cal}"
-                f"_transform-{detection_cfg['experience_args']['transform']['cal']}"
-                f"_n-epochs-{detection_cfg['experience_args']['n_epochs']['cal']}.pt"
-            )
-        ),
-        "test": str(latent_root / f"test_n-samples-{data_cfg['n_samples']['test']}.pt"),
-    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -206,6 +188,7 @@ def run(args: argparse.Namespace) -> None:
 
             run_dir = root_dir / f"seed-split-{seed_split}"
             ensure_dir(run_dir)
+            latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg)
 
             for n_cal in n_cal_values:
                 res_loader, cal_loader, test_loader = prepare_ablation_dataloaders(
@@ -221,8 +204,6 @@ def run(args: argparse.Namespace) -> None:
                     data_name=data_cfg["name"],
                     model_name=model_cfg["model_name"],
                 )
-
-                latent_paths = _latent_paths_for_cal(args.latent_dir, data_cfg, detection_cfg, seed_split, n_cal)
                 evaluator = EvaluatorAblation(
                     model=model,
                     cfg_detection=deepcopy(detection_cfg),
