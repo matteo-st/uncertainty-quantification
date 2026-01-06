@@ -1,0 +1,14 @@
+name: doctor
+postprocessor_args:
+  temperature: 1.0
+  magnitude: 0.0
+  normalize: True
+experience_args:
+  n_folds: None
+  n_epochs:
+    res: None
+    cal: 1
+  transform:
+    res: test
+    cal: test
+postprocessor_grid: {}
