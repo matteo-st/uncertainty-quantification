@@ -112,6 +112,15 @@ def _build_test_indices(n_total: int, n_res: int, n_cal: int, n_test: int, seed_
     return np.asarray(test_idx, dtype=int)
 
 
+def _build_res_indices(n_total: int, n_res: int, n_cal: int, seed_split: int | None) -> np.ndarray:
+    perm = list(range(n_total))
+    if seed_split is not None:
+        rng = random.Random(seed_split)
+        rng.shuffle(perm)
+    res_idx = perm[n_cal : n_cal + n_res]
+    return np.asarray(res_idx, dtype=int)
+
+
 def _plot_score_distribution(
     scores: np.ndarray,
     out_path: Path,
@@ -195,11 +204,42 @@ def main() -> None:
         },
     }
 
+    res_scores = None
+    if args.latent_path and args.n_res and args.n_cal:
+        latent_path = Path(args.latent_path)
+        if not latent_path.exists():
+            raise FileNotFoundError(f"Missing latent file: {latent_path}")
+        pkg = torch.load(latent_path, map_location="cpu")
+        logits = pkg["logits"]
+        scores_all = _compute_score(
+            logits=logits,
+            space=args.score_space,
+            temperature=args.temperature,
+            normalize_gini=args.normalize_gini,
+        )
+        res_idx = _build_res_indices(
+            n_total=scores_all.shape[0],
+            n_res=args.n_res,
+            n_cal=args.n_cal,
+            seed_split=args.seed_split,
+        )
+        res_scores = scores_all[res_idx]
+
     for run_name, cfg in runs.items():
         csv_path = root / run_name / "bin_diagnostics.csv"
         if not csv_path.exists():
             raise FileNotFoundError(f"Missing {csv_path}")
         df = pd.read_csv(csv_path)
+        centers = df["center"].to_numpy()
+        widths = df["width"].to_numpy()
+        if res_scores is not None and "unif-mass" in run_name:
+            k = len(df)
+            quantiles = np.quantile(res_scores, np.linspace(0.0, 1.0, k + 1))
+            centers = 0.5 * (quantiles[:-1] + quantiles[1:])
+            widths = quantiles[1:] - quantiles[:-1]
+            df = df.copy()
+            df["center"] = centers
+            df["width"] = widths
         title = cfg["title"]
         _plot_ci_vs_score(
             df,
