@@ -10,6 +10,7 @@ import random
 import numpy as np
 import torch
 import yaml
+import matplotlib.pyplot as plt
 
 from error_estimation.utils.metrics import compute_all_metrics
 
@@ -112,11 +113,29 @@ def _build_split_indices(n_total: int, n_res, n_cal, n_test, seed_split: int) ->
     return np.asarray(test_idx, dtype=int)
 
 
+def _apply_style() -> None:
+    plt.rcParams.update(
+        {
+            "figure.dpi": 120,
+            "savefig.dpi": 120,
+            "font.size": 12,
+            "axes.titlesize": 13,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 10,
+            "axes.grid": True,
+            "grid.alpha": 0.25,
+        }
+    )
+
+
 def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir)
     output_dir = Path(args.output_dir) if args.output_dir else run_dir / "diagnostics"
     output_dir.mkdir(parents=True, exist_ok=True)
+    _apply_style()
 
     stats_path, stats = _load_stats(run_dir)
     clusters_path, clusters_test = _load_clusters_test(run_dir)
@@ -215,28 +234,43 @@ def main() -> None:
     }
     (output_dir / "summary.json").write_text(json.dumps(_serialize(summary), indent=2), encoding="utf-8")
 
-    try:
-        import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    ax.plot(centers, uppers, color="tab:red", lw=1.2, label="Upper CI")
+    ax.plot(centers, lowers, color="tab:blue", lw=1.2, label="Lower CI")
+    ax.fill_between(centers, lowers, uppers, color="tab:blue", alpha=0.12)
+    ax.scatter(centers, means, s=12, color="black", label=r"$\widehat{\eta}(z)$")
+    ax.set_xlabel("Score bin center")
+    ax.set_ylabel("Confidence interval")
+    ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
+    fig.tight_layout()
+    fig.savefig(output_dir / "ci_vs_score.pdf", bbox_inches="tight")
+    plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.vlines(centers, lowers, uppers, colors="tab:blue", alpha=0.7, linewidth=1.0)
-        ax.scatter(centers, means, s=8, color="black", label=r"$\widehat{\eta}(z)$")
-        ax.set_xlabel("Score bin center")
-        ax.set_ylabel("Confidence interval")
-        ax.legend(frameon=False)
-        fig.tight_layout()
-        fig.savefig(output_dir / "ci_vs_score.pdf", bbox_inches="tight")
-        plt.close(fig)
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    ax.scatter(widths, half_widths, s=14, alpha=0.7, color="tab:purple")
+    ax.set_xlabel(r"Bin width $\Delta s_z$")
+    ax.set_ylabel(r"Half-width $h_z$")
+    fig.tight_layout()
+    fig.savefig(output_dir / "width_vs_halfwidth.pdf", bbox_inches="tight")
+    plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(6, 5))
-        ax.scatter(widths, half_widths, s=12, alpha=0.7)
-        ax.set_xlabel(r"Bin width $\Delta s_z$")
-        ax.set_ylabel(r"Half-width $h_z$")
-        fig.tight_layout()
-        fig.savefig(output_dir / "width_vs_halfwidth.pdf", bbox_inches="tight")
-        plt.close(fig)
-    except Exception:
-        pass
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    ax.hist(widths, bins=20, color="tab:gray", alpha=0.8)
+    ax.set_xlabel(r"Bin width $\Delta s_z$")
+    ax.set_ylabel("Count")
+    fig.tight_layout()
+    fig.savefig(output_dir / "bin_width_hist.pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    ax.scatter(counts_cal + 1, counts_test + 1, s=14, alpha=0.7, color="tab:green")
+    ax.set_xlabel("Count (cal)")
+    ax.set_ylabel("Count (test)")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    fig.tight_layout()
+    fig.savefig(output_dir / "count_shift.pdf", bbox_inches="tight")
+    plt.close(fig)
 
 
 if __name__ == "__main__":
