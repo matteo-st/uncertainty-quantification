@@ -587,7 +587,11 @@ class HyperparamsSearch(EvaluatorAblation):
         hyperparam_results = pd.concat(list_results, axis=0)
                    
 
-        self.best_idx = np.argmin([np.mean(res[f"{self.metric}_cal"].values) for res in list_results])
+        scores = [np.mean(res[f"{self.metric}_cal"].values) for res in list_results]
+        if self.metric_direction == "min":
+            self.best_idx = int(np.argmin(scores))
+        else:
+            self.best_idx = int(np.argmax(scores))
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]
@@ -596,7 +600,7 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_cal'].values}")
         self.cal_results = self.best_result
 
-        if self.save_search_results:
+        if self.save_search_results or len(self.hyperparam_combination) > 1:
             self.save_results(
                 result_file=os.path.join(self.result_folder, "search.jsonl"),
                 results=hyperparam_results,
