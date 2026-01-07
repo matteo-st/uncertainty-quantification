@@ -10,7 +10,7 @@ Understand how uniform-mass binning affects detection performance relative to th
 - Model: ResNet-34 (preprocessor: `ce`)
 - Score: Gini (doctor-style), temperature = 1.0
 - Split: res = 3000, cal = 2000, test = 5000, seed-split = 9
-- Metric used for selection: ROC-AUC on res (search_res)
+- Metric used for selection: ROC-AUC on res (selection never uses cal)
 - Guarantee: bins learned on res, confidence intervals on cal, evaluation on test
 
 ## Notation and parameters
@@ -38,6 +38,17 @@ Understand how uniform-mass binning affects detection performance relative to th
 Notes:
 - "Continuous" is the raw 1D score (no binning).
 - "Best grid" is selected by ROC-AUC on the res split; the table reports test metrics only.
+
+## Hyperparameter selection protocol (K)
+To preserve the iid calibration guarantee, cal is never used for selection:
+1) Split data into res/cal/test (cal is held out for CI construction only).
+2) For each candidate K, build uniform-mass bins using res scores.
+3) Compute selection metric on res only:
+   - Preferred: split res into res-train/res-val and select K by res-val ROC-AUC.
+   - Alternative: use all res for selection (more optimistic; still does not touch cal).
+4) With K fixed, rebuild bins on full res.
+5) Build Hoeffding CIs on cal.
+6) Evaluate final metrics on test only.
 
 ## Initial observations
 - Uniform-mass binning reduces ROC-AUC and increases FPR@95 relative to the continuous score.
