@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Tuple
 
+import random
+
 import numpy as np
 import torch
 import yaml
@@ -101,7 +103,7 @@ def _resolve_count(value, total: int, name: str) -> int:
 def _build_split_indices(n_total: int, n_res, n_cal, n_test, seed_split: int) -> np.ndarray:
     perm = list(range(n_total))
     if seed_split is not None:
-        rng = np.random.RandomState(seed_split)
+        rng = random.Random(seed_split)
         rng.shuffle(perm)
     n_cal_samples = _resolve_count(n_cal, n_total, "n_cal")
     n_res_samples = _resolve_count(n_res, n_total, "n_res")
