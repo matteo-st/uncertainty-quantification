@@ -86,6 +86,30 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_count(value, total: int, name: str) -> int:
+    if isinstance(value, float):
+        if not (0 < value <= 1):
+            raise ValueError(f"{name} ratio must be in (0,1], got {value}")
+        return int(round(total * value))
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError(f"{name} count must be >= 0, got {value}")
+        return value
+    raise TypeError(f"{name} must be float or int, got {type(value).__name__}")
+
+
+def _build_split_indices(n_total: int, n_res, n_cal, n_test, seed_split: int) -> np.ndarray:
+    perm = list(range(n_total))
+    if seed_split is not None:
+        rng = np.random.RandomState(seed_split)
+        rng.shuffle(perm)
+    n_cal_samples = _resolve_count(n_cal, n_total, "n_cal")
+    n_res_samples = _resolve_count(n_res, n_total, "n_res")
+    n_test_samples = _resolve_count(n_test, n_total, "n_test")
+    test_idx = perm[n_total - n_test_samples :]
+    return np.asarray(test_idx, dtype=int)
+
+
 def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir)
@@ -116,6 +140,7 @@ def main() -> None:
     if not config_dir.exists():
         config_dir = run_dir.parent / "configs"
     detection_cfg = _load_yaml(config_dir / "detection.yml")
+    dataset_cfg = _load_yaml(config_dir / "dataset.yml")
     args_cfg = detection_cfg.get("postprocessor_args", {})
     space = args_cfg.get("space", "gini")
     temperature = float(args_cfg.get("temperature", 1.0))
@@ -125,6 +150,24 @@ def main() -> None:
     score_cont = score_cont.detach().cpu().numpy()
 
     scores_binned = uppers[clusters_test]
+
+    if score_cont.shape[0] != scores_binned.shape[0]:
+        seed_split = None
+        if run_dir.name.startswith("seed-split-"):
+            try:
+                seed_split = int(run_dir.name.split("-")[-1])
+            except ValueError:
+                seed_split = None
+        n_samples = dataset_cfg.get("n_samples", {})
+        test_idx = _build_split_indices(
+            n_total=score_cont.shape[0],
+            n_res=n_samples.get("res", 0),
+            n_cal=n_samples.get("cal", 0),
+            n_test=n_samples.get("test", 0),
+            seed_split=seed_split,
+        )
+        score_cont = score_cont[test_idx]
+        detector_labels = detector_labels[test_idx]
 
     metrics_cont = compute_all_metrics(score_cont, detector_labels)
     metrics_bin = compute_all_metrics(scores_binned, detector_labels)
