@@ -199,6 +199,12 @@ def main() -> None:
     mask = counts_test > 0
     err_rate_test[mask] = err_test[mask] / counts_test[mask]
 
+    if not np.isfinite(bin_edges).all():
+        finite_min = float(np.min(score_cont))
+        finite_max = float(np.max(score_cont))
+        bin_edges = np.where(np.isneginf(bin_edges), finite_min, bin_edges)
+        bin_edges = np.where(np.isposinf(bin_edges), finite_max, bin_edges)
+
     centers, widths = _centers_and_widths(bin_edges)
     if centers.shape[0] != uppers.shape[0]:
         bin_edges = np.linspace(0.0, 1.0, uppers.shape[0] + 1)
@@ -255,7 +261,8 @@ def main() -> None:
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    ax.hist(widths, bins=20, color="tab:gray", alpha=0.8)
+    finite_widths = widths[np.isfinite(widths)]
+    ax.hist(finite_widths, bins=20, color="tab:gray", alpha=0.8)
     ax.set_xlabel(r"Bin width $\Delta s_z$")
     ax.set_ylabel("Count")
     fig.tight_layout()
