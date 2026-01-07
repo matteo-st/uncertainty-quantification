@@ -1,9 +1,9 @@
-# Partition Binning Investigation Report
+# Uniform-Mass Binning Investigation Report
 
 Last updated: 2026-01-07
 
 ## Objective
-Understand how 1D binning strategies (uniform-mass and quantile-merge) affect detection performance relative to the continuous score, and identify why performance drops.
+Understand how uniform-mass binning affects detection performance relative to the continuous score, and identify why performance drops.
 
 ## Experimental setup
 - Dataset: CIFAR-10
@@ -14,25 +14,17 @@ Understand how 1D binning strategies (uniform-mass and quantile-merge) affect de
 - Guarantee: bins learned on res, confidence intervals on cal, evaluation on test
 
 ## Notation and parameters
-- `K`: number of bins (clusters) before any merge.
-- `n_min`: minimum per-bin count on res; bins below this are merged into neighbors (quantile-merge).
+- `K`: number of uniform-mass bins (quantile bins).
 - res/cal/test: resolution split for binning, calibration split for CIs, and test for evaluation.
 - FPR@95: false positive rate at 95% true positive rate on the test split.
 
 ## Methods compared
 - Continuous score (no binning)
 - Uniform-mass (quantile bins)
-- Quantile-merge (uniform-mass + min count per bin)
 
 ## Runs and artifacts (server paths)
-- Quantile-merge diagnostics (k=50, n_min=50):  
-  `results/cifar10/resnet34_ce/partition/runs/quantile-merge-diagnostics/seed-split-9/diagnostics/`
-- Quantile-merge ablation (grid search):  
-  `results/cifar10/resnet34_ce/partition/runs/quantile-merge-ablation/seed-split-9/diagnostics/`
 - Uniform-mass ablation (grid search):  
   `results/cifar10/resnet34_ce/partition/runs/unif-mass-ablation/seed-split-9/diagnostics/`
-- Quantile-merge ablation (search grid saved):  
-  `results/cifar10/resnet34_ce/partition/runs/quantile-merge-ablation-search/seed-split-9/diagnostics/`
 - Uniform-mass ablation (search grid saved):  
   `results/cifar10/resnet34_ce/partition/runs/unif-mass-ablation-search/seed-split-9/diagnostics/`
 
@@ -41,50 +33,30 @@ Understand how 1D binning strategies (uniform-mass and quantile-merge) affect de
 | Method | Bin config | ROC-AUC | FPR@95 | AUPR_in | AUPR_out |
 | --- | --- | --- | --- | --- | --- |
 | Continuous | n/a | 0.9219 | 0.3560 | 0.4000 | 0.9952 |
-| Quantile-merge | k=50, n_min=50 | 0.8990 | 0.5434 | 0.3623 | 0.9921 |
-| Quantile-merge (best grid) | k=100, n_min=1 | 0.8956 | 0.4063 | 0.3445 | 0.9920 |
 | Uniform-mass (best grid) | k=100 | 0.8956 | 0.4063 | 0.3445 | 0.9920 |
 
 Notes:
 - "Continuous" is the raw 1D score (no binning).
-- "Best grid" refers to selection by ROC-AUC on the res split.
+- "Best grid" is selected by ROC-AUC on the res split; the table reports test metrics only.
 
 ## Initial observations
-- Binning reduces ROC-AUC and increases FPR@95 relative to the continuous score.
-- Quantile-merge with n_min=50 trades ROC-AUC for a much worse FPR@95.
-- When n_min=1, quantile-merge reduces to uniform-mass and yields the same metrics.
+- Uniform-mass binning reduces ROC-AUC and increases FPR@95 relative to the continuous score.
+- The gap suggests that quantization loses ranking resolution in the operating region.
 - Continuous scoring remains the strongest for ranking metrics.
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
-- `ci_vs_score.pdf`: confidence intervals and bin means vs score center. Look for wide CIs near the decision threshold (large uncertainty where it matters).
-- `width_vs_halfwidth.pdf`: bin width vs CI half-width. Wide bins with large half-widths indicate poor resolution and high variance.
-- `bin_width_hist.pdf`: distribution of bin widths. Heavy tails imply many coarse bins (often in score extremes).
-- `count_shift.pdf`: cal vs test counts per bin. Large deviations suggest distribution shift that can inflate uncertainty.
+- CI vs score: confidence intervals and bin means vs score center. Look for wide CIs near the decision threshold (large uncertainty where it matters).
+- Width vs half-width: bin width vs CI half-width. Wide bins with large half-widths indicate poor resolution and high variance.
+- Bin width histogram: distribution of bin widths. Heavy tails imply many coarse bins (often in score extremes).
+- Count shift: cal vs test counts per bin. Large deviations suggest distribution shift that can inflate uncertainty.
 
 ## Evidence summary from plots (to read alongside the figures)
-- The large FPR@95 jump at n_min=50 suggests the merge step likely removes resolution around the operating region; verify in `ci_vs_score.pdf` by checking how many merged bins span the threshold.
-- The gap between continuous and binned ROC-AUC is consistent with fewer distinct score levels; check `bin_width_hist.pdf` for a heavy tail and `width_vs_halfwidth.pdf` for wide bins with large CI half-widths.
-- The best K (100) improves ROC-AUC on res, indicating that finer binning helps ranking; see `grid_roc_auc_res.pdf` and `curve_roc_auc_res.pdf`.
+- The gap between continuous and binned ROC-AUC is consistent with fewer distinct score levels; check the bin width histogram and width vs half-width for wide bins with large CI half-widths.
+- Larger K improves ROC-AUC on res, indicating that finer binning helps ranking; see the ROC-AUC vs K curve.
 
 ## Grid search highlights (res split)
-Quantile-merge grid (ROC-AUC on res):
-- Best: n_clusters=100, n_min in {1, 20} with roc_auc_res ≈ 0.9472 and fpr_res ≈ 0.2561.
-- Increasing n_min to 50 or 100 does not improve roc_auc_res; it usually shifts fpr_res upward for the same K.
-
-Uniform-mass grid (ROC-AUC on res):
-- ROC-AUC improves with K; best at K=100 with roc_auc_res ≈ 0.9472 and fpr_res ≈ 0.2561.
-- K=50 is slightly worse (roc_auc_res ≈ 0.9404).
-
-Top quantile-merge configurations (res split):
-| n_clusters | n_min | roc_auc_res | fpr_res |
-| --- | --- | --- | --- |
-| 100 | 1 | 0.9472 | 0.2561 |
-| 100 | 20 | 0.9472 | 0.2561 |
-| 50 | 20 | 0.9404 | 0.3505 |
-| 50 | 50 | 0.9404 | 0.3505 |
-
-Uniform-mass (res split):
+Uniform-mass (res split, used only for selection; not a performance report):
 | n_clusters | roc_auc_res | fpr_res |
 | --- | --- | --- |
 | 100 | 0.9472 | 0.2561 |
@@ -95,18 +67,6 @@ Uniform-mass (res split):
 ## Figures (embedded)
 These figures are rendered from the downloaded diagnostics CSVs for readability.
 
-### Quantile-merge (k=50, n_min=50)
-![Quantile-merge diagnostics: CI vs score](partition_binning_assets/quantile-merge-diagnostics_ci_vs_score.png)
-![Quantile-merge diagnostics: width vs half-width](partition_binning_assets/quantile-merge-diagnostics_width_vs_halfwidth.png)
-![Quantile-merge diagnostics: bin width histogram](partition_binning_assets/quantile-merge-diagnostics_bin_width_hist.png)
-![Quantile-merge diagnostics: cal vs test counts](partition_binning_assets/quantile-merge-diagnostics_count_shift.png)
-
-### Quantile-merge (best grid)
-![Quantile-merge ablation: CI vs score](partition_binning_assets/quantile-merge-ablation_ci_vs_score.png)
-![Quantile-merge ablation: width vs half-width](partition_binning_assets/quantile-merge-ablation_width_vs_halfwidth.png)
-![Quantile-merge ablation: bin width histogram](partition_binning_assets/quantile-merge-ablation_bin_width_hist.png)
-![Quantile-merge ablation: cal vs test counts](partition_binning_assets/quantile-merge-ablation_count_shift.png)
-
 ### Uniform-mass (best grid)
 ![Uniform-mass ablation: CI vs score](partition_binning_assets/unif-mass-ablation_ci_vs_score.png)
 ![Uniform-mass ablation: width vs half-width](partition_binning_assets/unif-mass-ablation_width_vs_halfwidth.png)
@@ -114,12 +74,10 @@ These figures are rendered from the downloaded diagnostics CSVs for readability.
 ![Uniform-mass ablation: cal vs test counts](partition_binning_assets/unif-mass-ablation_count_shift.png)
 
 ### Grid search summaries (res split)
-![Quantile-merge grid: ROC-AUC](partition_binning_assets/quantile_merge_grid_roc_auc_res.png)
-![Quantile-merge grid: FPR@95](partition_binning_assets/quantile_merge_grid_fpr_res.png)
 ![Uniform-mass curve: ROC-AUC](partition_binning_assets/unif_mass_curve_roc_auc_res.png)
 ![Uniform-mass curve: FPR@95](partition_binning_assets/unif_mass_curve_fpr_res.png)
 
 ## Next steps (analysis plan)
 1) Inspect per-bin diagnostics to see if loss is concentrated in tails (wide bins).
-2) Compare bin-width distributions across K and n_min (use `bin_width_hist.pdf`).
+2) Compare bin-width distributions across K (see the bin width histogram).
 3) Extend the grid to K=200 for sensitivity (if runtime allows).
