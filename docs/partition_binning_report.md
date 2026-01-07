@@ -64,6 +64,7 @@ To preserve the iid calibration guarantee, cal is never used for selection:
 - CIFAR-100 shows a similar pattern: best res ROC-AUC at K=500, but weak test ROC-AUC and very high FPR@95.
 - Cross-validation selection picks smaller K and improves test ROC-AUC and FPR@95 on both datasets.
 - Test curves show different optima by metric (CIFAR-10: best ROC-AUC at K=20, best FPR at K=100; CIFAR-100: best ROC-AUC at K=10, best FPR at K=20).
+- Cal-only curves (mean over seeds, n_cal=5000) show smoother dynamics and favor smaller K (CIFAR-10 best ROC-AUC at K=20; best FPR at K=10; CIFAR-100 best ROC-AUC/FPR at K=20).
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
@@ -130,6 +131,12 @@ These figures are rendered from the downloaded diagnostics CSVs for readability.
 ![Uniform-mass CIFAR-10: FPR@95 (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar10_fpr.png)
 ![Uniform-mass CIFAR-100: ROC-AUC (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar100_roc_auc.png)
 ![Uniform-mass CIFAR-100: FPR@95 (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar100_fpr.png)
+
+### Test performance vs K (cal-only binning + CI, mean ± std over seeds)
+![Uniform-mass CIFAR-10: ROC-AUC (cal-only) vs K](partition_binning_assets/unif_mass_calonly_curve_cifar10_roc_auc.png)
+![Uniform-mass CIFAR-10: FPR@95 (cal-only) vs K](partition_binning_assets/unif_mass_calonly_curve_cifar10_fpr.png)
+![Uniform-mass CIFAR-100: ROC-AUC (cal-only) vs K](partition_binning_assets/unif_mass_calonly_curve_cifar100_roc_auc.png)
+![Uniform-mass CIFAR-100: FPR@95 (cal-only) vs K](partition_binning_assets/unif_mass_calonly_curve_cifar100_fpr.png)
 
 ## Limitations of the current procedure
 - Selection bias: `search_res` uses the same res split to build bins and to select K, which is optimistic and can overfit to res.
