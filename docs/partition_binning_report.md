@@ -3,10 +3,10 @@
 Last updated: 2026-01-07
 
 ## Objective
-Understand how uniform-mass binning affects detection performance relative to the continuous score, and identify why performance drops.
+Understand how uniform-mass binning affects detection performance relative to the continuous score, and identify why performance drops across CIFAR-10 and CIFAR-100.
 
 ## Experimental setup
-- Dataset: CIFAR-10
+- Datasets: CIFAR-10, CIFAR-100
 - Model: ResNet-34 (preprocessor: `ce`)
 - Score: Gini (doctor-style), temperature = 1.0
 - Split: res = 3000, cal = 2000, test = 5000, seed-split = 9
@@ -23,17 +23,23 @@ Understand how uniform-mass binning affects detection performance relative to th
 - Uniform-mass (quantile bins)
 
 ## Runs and artifacts (server paths)
-- Uniform-mass ablation (grid search):  
-  `results/cifar10/resnet34_ce/partition/runs/unif-mass-ablation/seed-split-9/diagnostics/`
-- Uniform-mass ablation (search grid saved):  
-  `results/cifar10/resnet34_ce/partition/runs/unif-mass-ablation-search/seed-split-9/diagnostics/`
+- CIFAR-10 expanded grid (K up to 500):  
+  `results/cifar10/resnet34_ce/partition/runs/unif-mass-grid-v2/seed-split-9/`
+- CIFAR-100 expanded grid (K up to 500):  
+  `results/cifar100/resnet34_ce/partition/runs/unif-mass-grid-v2/seed-split-9/`
 
 ## Summary metrics (test set)
 
+### CIFAR-10 / ResNet-34
 | Method | Bin config | ROC-AUC | FPR@95 | AUPR_in | AUPR_out |
 | --- | --- | --- | --- | --- | --- |
 | Continuous | n/a | 0.9219 | 0.3560 | 0.4000 | 0.9952 |
-| Uniform-mass (best grid) | k=100 | 0.8956 | 0.4063 | 0.3445 | 0.9920 |
+| Uniform-mass (best grid v2) | k=500 | 0.7447 | 0.7259 | 0.1072 | 0.9803 |
+
+### CIFAR-100 / ResNet-34
+| Method | Bin config | ROC-AUC | FPR@95 | AUPR_in | AUPR_out |
+| --- | --- | --- | --- | --- | --- |
+| Uniform-mass (best grid v2) | k=500 | 0.7485 | 0.7732 | 0.3921 | 0.8977 |
 
 Notes:
 - "Continuous" is the raw 1D score (no binning).
@@ -51,9 +57,9 @@ To preserve the iid calibration guarantee, cal is never used for selection:
 6) Evaluate final metrics on test only.
 
 ## Initial observations
-- Uniform-mass binning reduces ROC-AUC and increases FPR@95 relative to the continuous score.
-- The gap suggests that quantization loses ranking resolution in the operating region.
-- Continuous scoring remains the strongest for ranking metrics.
+- Uniform-mass binning reduces ROC-AUC and increases FPR@95 relative to the continuous score (CIFAR-10).
+- Res ROC-AUC improves with larger K, but test ROC-AUC degrades sharply for K=500, indicating overfitting to res.
+- CIFAR-100 shows a similar pattern: best res ROC-AUC at K=500, but weak test ROC-AUC and very high FPR@95.
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
@@ -64,16 +70,32 @@ Use these plots to diagnose where binning hurts performance and why:
 
 ## Evidence summary from plots (to read alongside the figures)
 - The gap between continuous and binned ROC-AUC is consistent with fewer distinct score levels; check the bin width histogram and width vs half-width for wide bins with large CI half-widths.
-- Larger K improves ROC-AUC on res, indicating that finer binning helps ranking; see the ROC-AUC vs K curve.
+- Larger K improves ROC-AUC on res, but this does not transfer to test; see the ROC-AUC vs K curves.
 
 ## Grid search highlights (res split)
 Uniform-mass (res split, used only for selection; not a performance report):
-| n_clusters | roc_auc_res | fpr_res |
-| --- | --- | --- |
-| 100 | 0.9472 | 0.2561 |
-| 50 | 0.9404 | 0.3505 |
-| 20 | 0.9288 | 0.3211 |
-| 10 | 0.9147 | 0.3732 |
+
+### CIFAR-10 / ResNet-34
+| n_clusters | roc_auc_res |
+| --- | --- |
+| 10 | 0.9147 |
+| 20 | 0.9288 |
+| 50 | 0.9404 |
+| 100 | 0.9472 |
+| 200 | 0.9543 |
+| 300 | 0.9573 |
+| 500 | 0.9655 |
+
+### CIFAR-100 / ResNet-34
+| n_clusters | roc_auc_res |
+| --- | --- |
+| 10 | 0.8820 |
+| 20 | 0.8866 |
+| 50 | 0.8891 |
+| 100 | 0.8949 |
+| 200 | 0.9010 |
+| 300 | 0.9056 |
+| 500 | 0.9112 |
 
 ## Figures (embedded)
 These figures are rendered from the downloaded diagnostics CSVs for readability.
@@ -88,10 +110,21 @@ These figures are rendered from the downloaded diagnostics CSVs for readability.
 ![Uniform-mass ablation: cal vs test counts](partition_binning_assets/unif-mass-ablation_count_shift.png)
 
 ### Grid search summaries (res split)
-![Uniform-mass curve: ROC-AUC](partition_binning_assets/unif_mass_curve_roc_auc_res.png)
-![Uniform-mass curve: FPR@95](partition_binning_assets/unif_mass_curve_fpr_res.png)
+![Uniform-mass CIFAR-10: ROC-AUC](partition_binning_assets/unif_mass_grid_v2_cifar10_roc_auc_res.png)
+![Uniform-mass CIFAR-10: FPR@95](partition_binning_assets/unif_mass_grid_v2_cifar10_fpr_res.png)
+![Uniform-mass CIFAR-100: ROC-AUC](partition_binning_assets/unif_mass_grid_v2_cifar100_roc_auc_res.png)
+![Uniform-mass CIFAR-100: FPR@95](partition_binning_assets/unif_mass_grid_v2_cifar100_fpr_res.png)
+
+## Limitations of the current procedure
+- Selection bias: `search_res` uses the same res split to build bins and to select K, which is optimistic and can overfit to res.
+- Selection metric mismatch: ROC-AUC on res does not account for calibration tightness or the guarantee objective; it can prefer large K even when CIs become unstable.
+- Finite-sample effects: with large K, per-bin counts shrink on cal, widening Hoeffding intervals and degrading FPR@95 on test.
+- Single-seed evidence: results are for seed-split 9 only; variance across splits is unknown.
+- Limited baselines: CIFAR-100 continuous-score baseline is not yet computed, so relative loss is not quantified there.
 
 ## Next steps (analysis plan)
 1) Inspect per-bin diagnostics to see if loss is concentrated in tails (wide bins).
 2) Compare bin-width distributions across K (see the bin width histogram).
-3) Extend the grid to K=200 for sensitivity (if runtime allows).
+3) Re-run selection with res-train/res-val (search_val) to reduce selection bias.
+4) Add a continuous-score baseline for CIFAR-100.
+5) Repeat for multiple seed splits to quantify variance.

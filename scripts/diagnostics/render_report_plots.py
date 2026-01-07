@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import random
+import json
 
 
 def _apply_style() -> None:
@@ -167,6 +168,19 @@ def _plot_curve(df: pd.DataFrame, value_col: str, out_path: Path, title: str) ->
     plt.close(fig)
 
 
+def _load_jsonl(path: Path) -> pd.DataFrame:
+    rows = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    if not rows:
+        raise ValueError(f"No rows found in {path}")
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render report-ready plots from diagnostics CSVs.")
     parser.add_argument("--diagnostics-root", required=True, help="Path to diagnostics_server directory.")
@@ -296,6 +310,20 @@ def main() -> None:
             out_path=out_dir / "unif_mass_curve_fpr_res.png",
             title="Uniform-mass: FPR@95 (res) vs K",
         )
+
+    for dataset in ("cifar10", "cifar100"):
+        search_jsonl = root / "unif-mass-grid-v2" / dataset / "search.jsonl"
+        if not search_jsonl.exists():
+            continue
+        df = _load_jsonl(search_jsonl)
+        if "n_clusters" in df.columns:
+            df["n_clusters"] = pd.to_numeric(df["n_clusters"], errors="coerce")
+        for metric in ("roc_auc_res", "fpr_res"):
+            if metric not in df.columns:
+                continue
+            title = f"Uniform-mass {dataset}: {metric} vs K (res)"
+            out_path = out_dir / f"unif_mass_grid_v2_{dataset}_{metric}.png"
+            _plot_curve(df, value_col=metric, out_path=out_path, title=title)
 
     if args.latent_path:
         latent_path = Path(args.latent_path)
