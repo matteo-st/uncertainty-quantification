@@ -78,6 +78,9 @@ Uniform-mass (res split, used only for selection; not a performance report):
 ## Figures (embedded)
 These figures are rendered from the downloaded diagnostics CSVs for readability.
 
+### Continuous score distribution
+![Continuous score distribution (test)](partition_binning_assets/score_distribution_test.png)
+
 ### Uniform-mass (best grid)
 ![Uniform-mass ablation: CI vs score](partition_binning_assets/unif-mass-ablation_ci_vs_score.png)
 ![Uniform-mass ablation: width vs half-width](partition_binning_assets/unif-mass-ablation_width_vs_halfwidth.png)

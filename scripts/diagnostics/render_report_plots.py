@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import random
 
 
 def _apply_style() -> None:
@@ -80,6 +82,52 @@ def _plot_count_shift(df: pd.DataFrame, out_path: Path, title: str) -> None:
     plt.close(fig)
 
 
+def _compute_score(
+    logits: torch.Tensor,
+    space: str,
+    temperature: float,
+    normalize_gini: bool,
+) -> np.ndarray:
+    if space == "gini":
+        probs = torch.softmax(logits / temperature, dim=1)
+        g = torch.sum(probs**2, dim=1)
+        if normalize_gini:
+            score = (1.0 - g) / g
+        else:
+            score = 1.0 - g
+        return score.detach().cpu().numpy()
+    if space in {"msp", "max_proba"}:
+        probs = torch.softmax(logits / temperature, dim=1)
+        score = -probs.max(dim=1).values
+        return score.detach().cpu().numpy()
+    raise ValueError(f"Unsupported score space: {space}")
+
+
+def _build_test_indices(n_total: int, n_res: int, n_cal: int, n_test: int, seed_split: int | None) -> np.ndarray:
+    perm = list(range(n_total))
+    if seed_split is not None:
+        rng = random.Random(seed_split)
+        rng.shuffle(perm)
+    test_idx = perm[n_total - n_test :]
+    return np.asarray(test_idx, dtype=int)
+
+
+def _plot_score_distribution(
+    scores: np.ndarray,
+    out_path: Path,
+    title: str,
+    x_label: str,
+) -> None:
+    fig, ax = plt.subplots(figsize=(8.0, 5.0))
+    ax.hist(scores, bins=30, density=True, color="tab:blue", alpha=0.85)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Density")
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _plot_grid_heatmap(df: pd.DataFrame, value_col: str, out_path: Path, title: str) -> None:
     pivot = df.pivot(index="n_min", columns="n_clusters", values=value_col)
     fig, ax = plt.subplots(figsize=(8.5, 5.5))
@@ -114,6 +162,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Render report-ready plots from diagnostics CSVs.")
     parser.add_argument("--diagnostics-root", required=True, help="Path to diagnostics_server directory.")
     parser.add_argument("--output-dir", required=True, help="Output directory for report images.")
+    parser.add_argument("--latent-path", default=None, help="Optional latent full.pt path for score histogram.")
+    parser.add_argument("--seed-split", type=int, default=None, help="Seed split used to build test indices.")
+    parser.add_argument("--n-res", type=int, default=0, help="Number of res samples.")
+    parser.add_argument("--n-cal", type=int, default=0, help="Number of cal samples.")
+    parser.add_argument("--n-test", type=int, default=0, help="Number of test samples.")
+    parser.add_argument("--score-space", default="gini", help="Score space for histogram (gini/msp).")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for score computation.")
+    parser.add_argument("--normalize-gini", action="store_true", help="Normalize gini score.")
     args = parser.parse_args()
 
     root = Path(args.diagnostics_root)
@@ -199,6 +255,34 @@ def main() -> None:
             value_col="fpr_res",
             out_path=out_dir / "unif_mass_curve_fpr_res.png",
             title="Uniform-mass: FPR@95 (res) vs K",
+        )
+
+    if args.latent_path:
+        latent_path = Path(args.latent_path)
+        if not latent_path.exists():
+            raise FileNotFoundError(f"Missing latent file: {latent_path}")
+        pkg = torch.load(latent_path, map_location="cpu")
+        logits = pkg["logits"]
+        scores = _compute_score(
+            logits=logits,
+            space=args.score_space,
+            temperature=args.temperature,
+            normalize_gini=args.normalize_gini,
+        )
+        if args.n_test:
+            idx = _build_test_indices(
+                n_total=scores.shape[0],
+                n_res=args.n_res,
+                n_cal=args.n_cal,
+                n_test=args.n_test,
+                seed_split=args.seed_split,
+            )
+            scores = scores[idx]
+        _plot_score_distribution(
+            scores=scores,
+            out_path=out_dir / "score_distribution_test.png",
+            title="Continuous score distribution (test)",
+            x_label=f"{args.score_space} score",
         )
 
 
