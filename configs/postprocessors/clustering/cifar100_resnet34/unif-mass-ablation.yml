@@ -19,8 +19,8 @@ postprocessor_args:
   clustering_seed: None
 
 experience_args:
-  n_folds: None
-  fit_after_cv: False
+  n_folds: 5
+  fit_after_cv: True
   n_epochs:
     res: 1
     cal: 1
