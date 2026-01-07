@@ -63,6 +63,7 @@ To preserve the iid calibration guarantee, cal is never used for selection:
 - Res ROC-AUC improves with larger K, but test ROC-AUC degrades sharply for K=500, indicating overfitting to res.
 - CIFAR-100 shows a similar pattern: best res ROC-AUC at K=500, but weak test ROC-AUC and very high FPR@95.
 - Cross-validation selection picks smaller K and improves test ROC-AUC and FPR@95 on both datasets.
+- Test curves show different optima by metric (CIFAR-10: best ROC-AUC at K=20, best FPR at K=100; CIFAR-100: best ROC-AUC at K=10, best FPR at K=20).
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
