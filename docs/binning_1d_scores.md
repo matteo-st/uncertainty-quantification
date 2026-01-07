@@ -4,21 +4,21 @@ This note compares two simple partitions of a 1D score `s(x)` (e.g., doctor, rel
 
 ## Notation
 - Score: $s:\mathcal{X}\to\mathbb{R}$ (1D uncertainty score).
-- Error indicator: $E=\mathbb{1}\{Y\\neq f(X)\}$.
-- Resolution function: $r(x)\in\\{1,\\dots,K\\}$ assigns a bin (cell) index.
-- Bin (cell): $\\mathcal{X}_z=\\{x: r(x)=z\\}$.
-- Bin count on calibration set: $N_z = \\sum_{i=1}^n \\mathbb{1}\\{X_i\\in\\mathcal{X}_z\\}$.
+- Error indicator: $E=\mathbb{1}\{Y\neq f(X)\}$.
+- Resolution function: $r(x)\in\{1,\dots,K\}$ assigns a bin (cell) index.
+- Bin (cell): $\mathcal{X}_z=\{x: r(x)=z\}$.
+- Bin count on calibration set: $N_z = \sum_{i=1}^n \mathbb{1}\{X_i\in\mathcal{X}_z\}$.
 - Bin error rate estimator:
 $$
-\\widehat{\\eta}(z)=\\frac{1}{N_z}\\sum_{i=1}^n E_i\\,\\mathbb{1}\\{X_i\\in\\mathcal{X}_z\\}.
+\widehat{\eta}(z)=\frac{1}{N_z}\sum_{i=1}^n E_i\,\mathbb{1}\{X_i\in\mathcal{X}_z\}.
 $$
 - Hoeffding half-width (for confidence level $\\alpha$):
 $$
-h_z=\\sqrt{\\frac{\\ln(2/\\alpha)}{2N_z}}.
+h_z=\sqrt{\frac{\ln(2/\alpha)}{2N_z}}.
 $$
 - Bin width in score space (for ordered edges $b_0<\\cdots<b_K$):
 $$
-\\Delta s_z = b_z - b_{z-1}.
+\Delta s_z = b_z - b_{z-1}.
 $$
 
 We use three disjoint splits: `res` (learn $r$), `cal` (estimate $\\widehat{\\eta}$ and CI), `test` (evaluate).

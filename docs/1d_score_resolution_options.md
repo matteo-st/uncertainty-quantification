@@ -4,10 +4,10 @@ This note lists practical resolution functions for a 1D score `s(x)` (doctor, re
 
 ## Notation (shared with the binning note)
 - Score: $s:\mathcal{X}\to\mathbb{R}$.
-- Error indicator: $E=\mathbb{1}\{Y\\neq f(X)\}$.
-- Resolution function: $r(x)\in\\{1,\\dots,K\\}$.
-- Bin edges: $b_0<\\cdots<b_K$, bin width $\\Delta s_z=b_z-b_{z-1}$.
-- Bin count: $N_z$ and Hoeffding half-width $h_z=\\sqrt{\\ln(2/\\alpha)/(2N_z)}$.
+- Error indicator: $E=\mathbb{1}\{Y\neq f(X)\}$.
+- Resolution function: $r(x)\in\{1,\dots,K\}$.
+- Bin edges: $b_0<\cdots<b_K$, bin width $\Delta s_z=b_z-b_{z-1}$.
+- Bin count: $N_z$ and Hoeffding half-width $h_z=\sqrt{\ln(2/\alpha)/(2N_z)}$.
 
 ## Options
 
