@@ -362,13 +362,16 @@ class PartitionPostprocessor(BasePostprocessor):
             
         self.clustering(detector_labels, clusters, k=torch.tensor([self.n_clusters]))
 
+        payload = {
+            "cluster_counts": self.cluster_counts,
+            "cluster_error_means": self.cluster_error_means,
+            "cluster_error_vars": self.cluster_error_vars,
+            "cluster_intervals": self.cluster_intervals,
+        }
+        if hasattr(self, "bin_edges") and self.bin_edges is not None:
+            payload["bin_edges"] = self.bin_edges.detach().cpu()
         torch.save(
-            {
-                "cluster_counts": self.cluster_counts,
-                "cluster_error_means": self.cluster_error_means,
-                "cluster_error_vars": self.cluster_error_vars,
-                "cluster_intervals": self.cluster_intervals,
-            },
+            payload,
             os.path.join(self.result_folder, f"partition_cluster_stats_n-clusters-{self.n_clusters}.pt"),
         )
 
