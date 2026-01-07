@@ -112,7 +112,10 @@ def main() -> None:
     logits = latent["logits"]
     detector_labels = (latent["model_preds"] != latent["labels"]).numpy().astype(int)
 
-    detection_cfg = _load_yaml(run_dir / "configs" / "detection.yml")
+    config_dir = run_dir / "configs"
+    if not config_dir.exists():
+        config_dir = run_dir.parent / "configs"
+    detection_cfg = _load_yaml(config_dir / "detection.yml")
     args_cfg = detection_cfg.get("postprocessor_args", {})
     space = args_cfg.get("space", "gini")
     temperature = float(args_cfg.get("temperature", 1.0))
