@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed-split", type=int, default=None, help="Single seed split")
     parser.add_argument("--seed-splits", nargs="+", type=int, default=None, help="Multiple seed splits")
     parser.add_argument("--n-classes", type=int, required=True, help="Number of classes")
-    parser.add_argument("--k-values", nargs="+", required=True, help="List of K values (space or comma separated)")
+    parser.add_argument("--k-values", nargs="+", default=None, help="List of K values (space or comma separated)")
     parser.add_argument("--k-range", nargs=3, type=int, default=None, help="Range: start end step (inclusive end)")
     parser.add_argument("--space", default="gini", help="Quantizer space (gini/msp/max_proba)")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for score")
@@ -117,6 +117,8 @@ def main() -> None:
             raise ValueError("k-range step must be > 0")
         k_values = list(range(start, end + 1, step))
     else:
+        if not args.k_values:
+            raise ValueError("Provide --k-values or --k-range")
         k_values = _parse_k_values(args.k_values)
 
     latent_path = Path(args.latent_path)
