@@ -124,6 +124,12 @@ These figures are rendered from the downloaded diagnostics CSVs for readability.
 ![Uniform-mass CIFAR-100: ROC-AUC (CV)](partition_binning_assets/unif_mass_grid_cv_cifar100_roc_auc_val_cross.png)
 ![Uniform-mass CIFAR-100: FPR@95 (CV)](partition_binning_assets/unif_mass_grid_cv_cifar100_fpr_val_cross.png)
 
+### Test performance vs K (bins on res, CIs on cal)
+![Uniform-mass CIFAR-10: ROC-AUC (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar10_roc_auc.png)
+![Uniform-mass CIFAR-10: FPR@95 (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar10_fpr.png)
+![Uniform-mass CIFAR-100: ROC-AUC (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar100_roc_auc.png)
+![Uniform-mass CIFAR-100: FPR@95 (test) vs K](partition_binning_assets/unif_mass_test_curve_cifar100_fpr.png)
+
 ## Limitations of the current procedure
 - Selection bias: `search_res` uses the same res split to build bins and to select K, which is optimistic and can overfit to res.
 - Selection metric mismatch: ROC-AUC on res does not account for calibration tightness or the guarantee objective; it can prefer large K even when CIs become unstable.
