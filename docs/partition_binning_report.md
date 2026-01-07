@@ -92,22 +92,32 @@ Uniform-mass (res split):
 | 20 | 0.9288 | 0.3211 |
 | 10 | 0.9147 | 0.3732 |
 
-## Plots generated (server paths)
-Each diagnostics folder contains:
-- `ci_vs_score.pdf`
-- `width_vs_halfwidth.pdf`
-- `bin_width_hist.pdf`
-- `count_shift.pdf`
+## Figures (embedded)
+These figures are rendered from the downloaded diagnostics CSVs for readability.
 
-Grid plots (saved in the search diagnostics folders):
-- `grid_roc_auc_res.pdf` and `grid_fpr_res.pdf` for quantile-merge
-- `curve_roc_auc_res.pdf` and `curve_fpr_res.pdf` for uniform-mass
+### Quantile-merge (k=50, n_min=50)
+![Quantile-merge diagnostics: CI vs score](partition_binning_assets/quantile-merge-diagnostics_ci_vs_score.png)
+![Quantile-merge diagnostics: width vs half-width](partition_binning_assets/quantile-merge-diagnostics_width_vs_halfwidth.png)
+![Quantile-merge diagnostics: bin width histogram](partition_binning_assets/quantile-merge-diagnostics_bin_width_hist.png)
+![Quantile-merge diagnostics: cal vs test counts](partition_binning_assets/quantile-merge-diagnostics_count_shift.png)
 
-How to read the plots:
-- `ci_vs_score.pdf`: lower/upper CI and bin means vs score center.
-- `width_vs_halfwidth.pdf`: shows the resolution/variance trade-off.
-- `bin_width_hist.pdf`: highlights very wide bins (often tails).
-- `count_shift.pdf`: checks stability between cal and test counts.
+### Quantile-merge (best grid)
+![Quantile-merge ablation: CI vs score](partition_binning_assets/quantile-merge-ablation_ci_vs_score.png)
+![Quantile-merge ablation: width vs half-width](partition_binning_assets/quantile-merge-ablation_width_vs_halfwidth.png)
+![Quantile-merge ablation: bin width histogram](partition_binning_assets/quantile-merge-ablation_bin_width_hist.png)
+![Quantile-merge ablation: cal vs test counts](partition_binning_assets/quantile-merge-ablation_count_shift.png)
+
+### Uniform-mass (best grid)
+![Uniform-mass ablation: CI vs score](partition_binning_assets/unif-mass-ablation_ci_vs_score.png)
+![Uniform-mass ablation: width vs half-width](partition_binning_assets/unif-mass-ablation_width_vs_halfwidth.png)
+![Uniform-mass ablation: bin width histogram](partition_binning_assets/unif-mass-ablation_bin_width_hist.png)
+![Uniform-mass ablation: cal vs test counts](partition_binning_assets/unif-mass-ablation_count_shift.png)
+
+### Grid search summaries (res split)
+![Quantile-merge grid: ROC-AUC](partition_binning_assets/quantile_merge_grid_roc_auc_res.png)
+![Quantile-merge grid: FPR@95](partition_binning_assets/quantile_merge_grid_fpr_res.png)
+![Uniform-mass curve: ROC-AUC](partition_binning_assets/unif_mass_curve_roc_auc_res.png)
+![Uniform-mass curve: FPR@95](partition_binning_assets/unif_mass_curve_fpr_res.png)
 
 ## Next steps (analysis plan)
 1) Inspect per-bin diagnostics to see if loss is concentrated in tails (wide bins).
