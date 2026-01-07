@@ -13,6 +13,12 @@ Understand how 1D binning strategies (uniform-mass and quantile-merge) affect de
 - Metric used for selection: ROC-AUC on res (search_res)
 - Guarantee: bins learned on res, confidence intervals on cal, evaluation on test
 
+## Notation and parameters
+- `K`: number of bins (clusters) before any merge.
+- `n_min`: minimum per-bin count on res; bins below this are merged into neighbors (quantile-merge).
+- res/cal/test: resolution split for binning, calibration split for CIs, and test for evaluation.
+- FPR@95: false positive rate at 95% true positive rate on the test split.
+
 ## Methods compared
 - Continuous score (no binning)
 - Uniform-mass (quantile bins)
@@ -39,11 +45,27 @@ Understand how 1D binning strategies (uniform-mass and quantile-merge) affect de
 | Quantile-merge (best grid) | k=100, n_min=1 | 0.8956 | 0.4063 | 0.3445 | 0.9920 |
 | Uniform-mass (best grid) | k=100 | 0.8956 | 0.4063 | 0.3445 | 0.9920 |
 
+Notes:
+- "Continuous" is the raw 1D score (no binning).
+- "Best grid" refers to selection by ROC-AUC on the res split.
+
 ## Initial observations
 - Binning reduces ROC-AUC and increases FPR@95 relative to the continuous score.
 - Quantile-merge with n_min=50 trades ROC-AUC for a much worse FPR@95.
 - When n_min=1, quantile-merge reduces to uniform-mass and yields the same metrics.
 - Continuous scoring remains the strongest for ranking metrics.
+
+## Interpretation guide for diagnostics plots
+Use these plots to diagnose where binning hurts performance and why:
+- `ci_vs_score.pdf`: confidence intervals and bin means vs score center. Look for wide CIs near the decision threshold (large uncertainty where it matters).
+- `width_vs_halfwidth.pdf`: bin width vs CI half-width. Wide bins with large half-widths indicate poor resolution and high variance.
+- `bin_width_hist.pdf`: distribution of bin widths. Heavy tails imply many coarse bins (often in score extremes).
+- `count_shift.pdf`: cal vs test counts per bin. Large deviations suggest distribution shift that can inflate uncertainty.
+
+## Evidence summary from plots (to read alongside the figures)
+- The large FPR@95 jump at n_min=50 suggests the merge step likely removes resolution around the operating region; verify in `ci_vs_score.pdf` by checking how many merged bins span the threshold.
+- The gap between continuous and binned ROC-AUC is consistent with fewer distinct score levels; check `bin_width_hist.pdf` for a heavy tail and `width_vs_halfwidth.pdf` for wide bins with large CI half-widths.
+- The best K (100) improves ROC-AUC on res, indicating that finer binning helps ranking; see `grid_roc_auc_res.pdf` and `curve_roc_auc_res.pdf`.
 
 ## Grid search highlights (res split)
 Quantile-merge grid (ROC-AUC on res):
@@ -53,6 +75,22 @@ Quantile-merge grid (ROC-AUC on res):
 Uniform-mass grid (ROC-AUC on res):
 - ROC-AUC improves with K; best at K=100 with roc_auc_res ≈ 0.9472 and fpr_res ≈ 0.2561.
 - K=50 is slightly worse (roc_auc_res ≈ 0.9404).
+
+Top quantile-merge configurations (res split):
+| n_clusters | n_min | roc_auc_res | fpr_res |
+| --- | --- | --- | --- |
+| 100 | 1 | 0.9472 | 0.2561 |
+| 100 | 20 | 0.9472 | 0.2561 |
+| 50 | 20 | 0.9404 | 0.3505 |
+| 50 | 50 | 0.9404 | 0.3505 |
+
+Uniform-mass (res split):
+| n_clusters | roc_auc_res | fpr_res |
+| --- | --- | --- |
+| 100 | 0.9472 | 0.2561 |
+| 50 | 0.9404 | 0.3505 |
+| 20 | 0.9288 | 0.3211 |
+| 10 | 0.9147 | 0.3732 |
 
 ## Plots generated (server paths)
 Each diagnostics folder contains:
@@ -65,8 +103,13 @@ Grid plots (saved in the search diagnostics folders):
 - `grid_roc_auc_res.pdf` and `grid_fpr_res.pdf` for quantile-merge
 - `curve_roc_auc_res.pdf` and `curve_fpr_res.pdf` for uniform-mass
 
+How to read the plots:
+- `ci_vs_score.pdf`: lower/upper CI and bin means vs score center.
+- `width_vs_halfwidth.pdf`: shows the resolution/variance trade-off.
+- `bin_width_hist.pdf`: highlights very wide bins (often tails).
+- `count_shift.pdf`: checks stability between cal and test counts.
+
 ## Next steps (analysis plan)
 1) Inspect per-bin diagnostics to see if loss is concentrated in tails (wide bins).
 2) Compare bin-width distributions across K and n_min (use `bin_width_hist.pdf`).
-3) Test a tie-breaker inside bins (raw score within bin) to preserve ranking while keeping guarantees.
-4) Extend the grid to K=200 for sensitivity (if runtime allows).
+3) Extend the grid to K=200 for sensitivity (if runtime allows).
