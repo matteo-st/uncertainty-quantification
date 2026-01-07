@@ -3,7 +3,7 @@ postprocessor_args:
   alpha: 0.05
   method: unif-mass
   bound: hoeffding
-  n_classes: 10
+  n_classes: 100
 
   space: gini
   reorder_embs: False
