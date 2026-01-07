@@ -139,7 +139,7 @@ def main() -> None:
         dec = PartitionPostprocessor(model=None, cfg=cfg, result_folder=str(output_dir), device=torch.device("cpu"))
         dec.fit(logits=res_logits, detector_labels=res_labels, fit_clustering=True)
         dec.fit(logits=cal_logits, detector_labels=cal_labels, fit_clustering=False)
-        scores = dec(logits=test_logits).detach().cpu().numpy()
+        scores = dec(logits=test_logits).detach().cpu().numpy().reshape(-1)
         metrics = compute_all_metrics(scores, test_labels.cpu().numpy())
         row = {"n_clusters": k}
         row.update({f"{key}_test": value for key, value in metrics.items()})
