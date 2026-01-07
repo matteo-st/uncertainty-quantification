@@ -35,11 +35,13 @@ Understand how uniform-mass binning affects detection performance relative to th
 | --- | --- | --- | --- | --- | --- |
 | Continuous | n/a | 0.9219 | 0.3560 | 0.4000 | 0.9952 |
 | Uniform-mass (best grid v2) | k=500 | 0.7447 | 0.7259 | 0.1072 | 0.9803 |
+| Uniform-mass (CV grid) | k=20 | 0.9001 | 0.6188 | 0.3455 | 0.9919 |
 
 ### CIFAR-100 / ResNet-34
 | Method | Bin config | ROC-AUC | FPR@95 | AUPR_in | AUPR_out |
 | --- | --- | --- | --- | --- | --- |
 | Uniform-mass (best grid v2) | k=500 | 0.7485 | 0.7732 | 0.3921 | 0.8977 |
+| Uniform-mass (CV grid) | k=20 | 0.8644 | 0.4884 | 0.6007 | 0.9523 |
 
 Notes:
 - "Continuous" is the raw 1D score (no binning).
@@ -60,6 +62,7 @@ To preserve the iid calibration guarantee, cal is never used for selection:
 - Uniform-mass binning reduces ROC-AUC and increases FPR@95 relative to the continuous score (CIFAR-10).
 - Res ROC-AUC improves with larger K, but test ROC-AUC degrades sharply for K=500, indicating overfitting to res.
 - CIFAR-100 shows a similar pattern: best res ROC-AUC at K=500, but weak test ROC-AUC and very high FPR@95.
+- Cross-validation selection picks smaller K and improves test ROC-AUC and FPR@95 on both datasets.
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
@@ -114,6 +117,12 @@ These figures are rendered from the downloaded diagnostics CSVs for readability.
 ![Uniform-mass CIFAR-10: FPR@95](partition_binning_assets/unif_mass_grid_v2_cifar10_fpr_res.png)
 ![Uniform-mass CIFAR-100: ROC-AUC](partition_binning_assets/unif_mass_grid_v2_cifar100_roc_auc_res.png)
 ![Uniform-mass CIFAR-100: FPR@95](partition_binning_assets/unif_mass_grid_v2_cifar100_fpr_res.png)
+
+### Grid search summaries (cross-validation)
+![Uniform-mass CIFAR-10: ROC-AUC (CV)](partition_binning_assets/unif_mass_grid_cv_cifar10_roc_auc_val_cross.png)
+![Uniform-mass CIFAR-10: FPR@95 (CV)](partition_binning_assets/unif_mass_grid_cv_cifar10_fpr_val_cross.png)
+![Uniform-mass CIFAR-100: ROC-AUC (CV)](partition_binning_assets/unif_mass_grid_cv_cifar100_roc_auc_val_cross.png)
+![Uniform-mass CIFAR-100: FPR@95 (CV)](partition_binning_assets/unif_mass_grid_cv_cifar100_fpr_val_cross.png)
 
 ## Limitations of the current procedure
 - Selection bias: `search_res` uses the same res split to build bins and to select K, which is optimistic and can overfit to res.

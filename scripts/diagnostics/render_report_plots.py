@@ -325,6 +325,20 @@ def main() -> None:
             out_path = out_dir / f"unif_mass_grid_v2_{dataset}_{metric}.png"
             _plot_curve(df, value_col=metric, out_path=out_path, title=title)
 
+    for dataset in ("cifar10", "cifar100"):
+        search_jsonl = root / "unif-mass-grid-cv-v1" / dataset / "search.jsonl"
+        if not search_jsonl.exists():
+            continue
+        df = _load_jsonl(search_jsonl)
+        if "n_clusters" in df.columns:
+            df["n_clusters"] = pd.to_numeric(df["n_clusters"], errors="coerce")
+        for metric in ("roc_auc_val_cross", "fpr_val_cross"):
+            if metric not in df.columns:
+                continue
+            title = f"Uniform-mass {dataset}: {metric} vs K (CV)"
+            out_path = out_dir / f"unif_mass_grid_cv_{dataset}_{metric}.png"
+            _plot_curve(df, value_col=metric, out_path=out_path, title=title)
+
     if args.latent_path:
         latent_path = Path(args.latent_path)
         if not latent_path.exists():
