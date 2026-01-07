@@ -94,6 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed-splits", nargs="+", type=int, default=None, help="Multiple seed splits")
     parser.add_argument("--n-classes", type=int, required=True, help="Number of classes")
     parser.add_argument("--k-values", nargs="+", required=True, help="List of K values (space or comma separated)")
+    parser.add_argument("--k-range", nargs=3, type=int, default=None, help="Range: start end step (inclusive end)")
     parser.add_argument("--space", default="gini", help="Quantizer space (gini/msp/max_proba)")
     parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for score")
     parser.add_argument("--alpha", type=float, default=0.05, help="Alpha for Hoeffding bound")
@@ -110,7 +111,13 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _apply_style()
 
-    k_values = _parse_k_values(args.k_values)
+    if args.k_range:
+        start, end, step = args.k_range
+        if step <= 0:
+            raise ValueError("k-range step must be > 0")
+        k_values = list(range(start, end + 1, step))
+    else:
+        k_values = _parse_k_values(args.k_values)
 
     latent_path = Path(args.latent_path)
     if not latent_path.exists():
