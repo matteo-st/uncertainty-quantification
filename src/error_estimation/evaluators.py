@@ -13,7 +13,12 @@ from torch.utils.data import DataLoader
 
 
 
-from error_estimation.utils.helper import _prepare_config_for_results, make_grid
+from error_estimation.utils.helper import (
+    _prepare_config_for_results,
+    make_grid,
+    metric_direction,
+    select_best_index,
+)
 from error_estimation.utils.eval import  MultiDetectorEvaluator, AblationDetector
 from error_estimation.utils.metrics import compute_all_metrics
 from error_estimation.utils.postprocessors import get_postprocessor
@@ -71,10 +76,8 @@ class EvaluatorAblation:
             self.quantizer_metric = metric
         else:
             self.quantizer_metric = quantizer_metric
-        if metric in ["fpr", "aurc"]:
-            self.metric_direction = "min"
-        else:
-            self.metric_direction = "max"
+        self.metric_direction = metric_direction(self.metric)
+        self.quantizer_metric_direction = metric_direction(self.quantizer_metric)
 
         self.cal_loader = cal_loader
         self.res_loader = res_loader
@@ -469,7 +472,9 @@ class EvaluatorAblation:
                     detector_labels=self.values["res"]["detector_labels"].cpu().numpy(),
                 )
 
-                    best_init = int(np.argmax(metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(metrics[self.quantizer_metric])) 
+                    best_init = select_best_index(
+                        metrics[self.quantizer_metric], self.quantizer_metric_direction
+                    )
                 if clustering_algo is not None:
                     clustering_algo.best_init = best_init
             print("Fitting confidence intervals on calibration data")
@@ -588,10 +593,7 @@ class HyperparamsSearch(EvaluatorAblation):
                    
 
         scores = [np.mean(res[f"{self.metric}_cal"].values) for res in list_results]
-        if self.metric_direction == "min":
-            self.best_idx = int(np.argmin(scores))
-        else:
-            self.best_idx = int(np.argmax(scores))
+        self.best_idx = select_best_index(scores, self.metric_direction)
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]
@@ -674,7 +676,8 @@ class HyperparamsSearch(EvaluatorAblation):
         hyperparam_results = pd.concat(list_results, axis=0)
                    
 
-        self.best_idx = np.argmin([np.mean(res[f"{self.metric}_val_cross"].values) for res in list_results])
+        scores = [np.mean(res[f"{self.metric}_val_cross"].values) for res in list_results]
+        self.best_idx = select_best_index(scores, self.metric_direction)
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]
@@ -734,7 +737,9 @@ class HyperparamsSearch(EvaluatorAblation):
             )
 
 
-            best_init = int(np.argmax(val_metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(val_metrics[self.quantizer_metric])) 
+            best_init = select_best_index(
+                val_metrics[self.quantizer_metric], self.quantizer_metric_direction
+            )
             clustering_algo = getattr(dec, "clustering_algo", None)
             if clustering_algo is not None:
                 clustering_algo.best_init = best_init
@@ -755,7 +760,9 @@ class HyperparamsSearch(EvaluatorAblation):
                    
 
         # self.best_idx = np.argmin([np.mean(res[f"{self.metric}_val_res"].values) for res in list_results])
-        self.best_idx = int(np.argmin(hyperparam_results[f"{self.metric}_val_res"].values) if self.metric_direction == "min" else np.argmax(hyperparam_results[f"{self.metric}_val_res"].values))
+        self.best_idx = select_best_index(
+            hyperparam_results[f"{self.metric}_val_res"].values, self.metric_direction
+        )
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]
@@ -824,7 +831,9 @@ class HyperparamsSearch(EvaluatorAblation):
                 # for likelihood, we want to maximize it
                 best_init = torch.argmax(clustering_algo.results.lower_bound).item()
             else:
-                best_init = int(np.argmax(metrics[self.quantizer_metric]) if self.metric_direction == "max" else np.argmin(metrics[self.quantizer_metric])) 
+                best_init = select_best_index(
+                    metrics[self.quantizer_metric], self.quantizer_metric_direction
+                )
             if clustering_algo is not None:
                 clustering_algo.best_init = best_init
             val_metrics = pd.DataFrame(metrics)
@@ -845,7 +854,9 @@ class HyperparamsSearch(EvaluatorAblation):
                    
 
         # self.best_idx = np.argmin([np.mean(res[f"{self.metric}_val_res"].values) for res in list_results])
-        self.best_idx = int(np.argmin(hyperparam_results[f"{self.metric}_res"].values) if self.metric_direction == "min" else np.argmax(hyperparam_results[f"{self.metric}_res"].values))
+        self.best_idx = select_best_index(
+            hyperparam_results[f"{self.metric}_res"].values, self.metric_direction
+        )
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]
@@ -914,7 +925,9 @@ class HyperparamsSearch(EvaluatorAblation):
                         # for likelihood, we want to maximize it
                         best_init = torch.argmax(clustering_algo.results.lower_bound).item()
                     else:
-                        best_init = int(np.argmax(results[self.metric]) if self.metric_direction == "max" else np.argmin(results[self.metric])) 
+                        best_init = select_best_index(
+                            results[self.metric], self.metric_direction
+                        )
                     # dec.clustering_algo.best_init = best_init
                     results = results.iloc[best_init].to_dict()
                     [metrics[key].append(results[key]) for key in results.keys()]
@@ -934,7 +947,8 @@ class HyperparamsSearch(EvaluatorAblation):
         hyperparam_results = pd.concat(list_results, axis=0)
                    
 
-        self.best_idx = np.argmin([np.mean(res[f"{self.metric}_val_cross"].values) for res in list_results])
+        scores = [np.mean(res[f"{self.metric}_val_cross"].values) for res in list_results]
+        self.best_idx = select_best_index(scores, self.metric_direction)
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
         self.detector = self.detectors[self.best_idx]

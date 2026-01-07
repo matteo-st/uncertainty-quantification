@@ -22,17 +22,33 @@ def make_grid(cfg_detection, key ="ablation_args"):
         yield cfg
 
 def metric_direction(metric: str) -> str:
-
-    dic = {
+    directions = {
         "fpr": "min",
-        "roc_auc": "max",
         "aurc": "min",
+        "roc_auc": "max",
         "aupr_err": "max",
         "aupr_success": "max",
+        "aupr_in": "max",
+        "aupr_out": "max",
+        "accuracy": "max",
+        "model_acc": "max",
+        "tpr": "max",
+        "likelihood": "max",
     }
-    if metric not in dic:
+    if metric not in directions:
         raise ValueError(f"Unknown metric '{metric}'")
-    return dic[metric]
+    return directions[metric]
+
+
+def select_best_index(values, direction: str) -> int:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        raise ValueError("Cannot select best index from empty values")
+    if direction == "min":
+        return int(np.nanargmin(arr))
+    if direction == "max":
+        return int(np.nanargmax(arr))
+    raise ValueError(f"Unknown direction '{direction}'")
 
 
 def setup_seeds(seed: int, seed_split: int):
