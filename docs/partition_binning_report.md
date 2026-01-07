@@ -57,7 +57,7 @@ To preserve the iid calibration guarantee, cal is never used for selection:
 
 ## Interpretation guide for diagnostics plots
 Use these plots to diagnose where binning hurts performance and why:
-- CI vs score: confidence intervals and bin means vs score center. Look for wide CIs near the decision threshold (large uncertainty where it matters).
+- CI vs score: confidence intervals and bin means vs score center. The x-axis uses quantile bin centers (uniform-mass), so near-uniform spacing is expected and does not imply a uniform score distribution.
 - Width vs half-width: bin width vs CI half-width. Wide bins with large half-widths indicate poor resolution and high variance.
 - Bin width histogram: distribution of bin widths. Heavy tails imply many coarse bins (often in score extremes).
 - Count shift: cal vs test counts per bin. Large deviations suggest distribution shift that can inflate uncertainty.

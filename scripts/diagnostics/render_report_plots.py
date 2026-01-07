@@ -25,13 +25,13 @@ def _apply_style() -> None:
     )
 
 
-def _plot_ci_vs_score(df: pd.DataFrame, out_path: Path, title: str) -> None:
+def _plot_ci_vs_score(df: pd.DataFrame, out_path: Path, title: str, x_label: str) -> None:
     fig, ax = plt.subplots(figsize=(9.0, 5.0))
     ax.plot(df["center"], df["upper"], color="tab:red", lw=1.4, label="Upper CI")
     ax.plot(df["center"], df["lower"], color="tab:blue", lw=1.4, label="Lower CI")
     ax.fill_between(df["center"], df["lower"], df["upper"], color="tab:blue", alpha=0.12)
     ax.scatter(df["center"], df["mean_cal"], s=16, color="black", label=r"$\widehat{\eta}(z)$")
-    ax.set_xlabel("Score bin center")
+    ax.set_xlabel(x_label)
     ax.set_ylabel("Confidence interval")
     ax.set_title(title)
     ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.16))
@@ -40,10 +40,10 @@ def _plot_ci_vs_score(df: pd.DataFrame, out_path: Path, title: str) -> None:
     plt.close(fig)
 
 
-def _plot_width_vs_halfwidth(df: pd.DataFrame, out_path: Path, title: str) -> None:
+def _plot_width_vs_halfwidth(df: pd.DataFrame, out_path: Path, title: str, x_label: str) -> None:
     fig, ax = plt.subplots(figsize=(8.0, 5.0))
     ax.scatter(df["width"], df["half_width"], s=20, alpha=0.75, color="tab:purple")
-    ax.set_xlabel(r"Bin width $\Delta s_z$")
+    ax.set_xlabel(x_label)
     ax.set_ylabel(r"Half-width $h_z$")
     ax.set_title(title)
     fig.tight_layout()
@@ -51,11 +51,11 @@ def _plot_width_vs_halfwidth(df: pd.DataFrame, out_path: Path, title: str) -> No
     plt.close(fig)
 
 
-def _plot_bin_width_hist(df: pd.DataFrame, out_path: Path, title: str) -> None:
+def _plot_bin_width_hist(df: pd.DataFrame, out_path: Path, title: str, x_label: str) -> None:
     fig, ax = plt.subplots(figsize=(8.0, 5.0))
     finite_widths = df["width"].replace([np.inf, -np.inf], np.nan).dropna()
     ax.hist(finite_widths, bins=22, color="tab:gray", alpha=0.85)
-    ax.set_xlabel(r"Bin width $\Delta s_z$")
+    ax.set_xlabel(x_label)
     ax.set_ylabel("Count")
     ax.set_title(title)
     fig.tight_layout()
@@ -122,20 +122,52 @@ def main() -> None:
     _apply_style()
 
     runs = {
-        "quantile-merge-diagnostics": "Quantile-merge (k=50, n_min=50)",
-        "quantile-merge-ablation": "Quantile-merge (best grid)",
-        "unif-mass-ablation": "Uniform-mass (best grid)",
+        "quantile-merge-diagnostics": {
+            "title": "Quantile-merge (k=50, n_min=50)",
+            "x_label": "Quantile bin center (score)",
+            "width_label": r"Bin width $\Delta s_z$",
+        },
+        "quantile-merge-ablation": {
+            "title": "Quantile-merge (best grid)",
+            "x_label": "Quantile bin center (score)",
+            "width_label": r"Bin width $\Delta s_z$",
+        },
+        "unif-mass-ablation": {
+            "title": "Uniform-mass (best grid)",
+            "x_label": "Quantile bin center (score)",
+            "width_label": r"Bin width $\Delta s_z$",
+        },
     }
 
-    for run_name, title in runs.items():
+    for run_name, cfg in runs.items():
         csv_path = root / run_name / "bin_diagnostics.csv"
         if not csv_path.exists():
             raise FileNotFoundError(f"Missing {csv_path}")
         df = pd.read_csv(csv_path)
-        _plot_ci_vs_score(df, out_dir / f"{run_name}_ci_vs_score.png", f"{title}: CI vs score")
-        _plot_width_vs_halfwidth(df, out_dir / f"{run_name}_width_vs_halfwidth.png", f"{title}: width vs half-width")
-        _plot_bin_width_hist(df, out_dir / f"{run_name}_bin_width_hist.png", f"{title}: bin width histogram")
-        _plot_count_shift(df, out_dir / f"{run_name}_count_shift.png", f"{title}: cal vs test counts")
+        title = cfg["title"]
+        _plot_ci_vs_score(
+            df,
+            out_dir / f"{run_name}_ci_vs_score.png",
+            f"{title}: CI vs score",
+            cfg["x_label"],
+        )
+        _plot_width_vs_halfwidth(
+            df,
+            out_dir / f"{run_name}_width_vs_halfwidth.png",
+            f"{title}: width vs half-width",
+            cfg["width_label"],
+        )
+        _plot_bin_width_hist(
+            df,
+            out_dir / f"{run_name}_bin_width_hist.png",
+            f"{title}: bin width histogram",
+            cfg["width_label"],
+        )
+        _plot_count_shift(
+            df,
+            out_dir / f"{run_name}_count_shift.png",
+            f"{title}: cal vs test counts",
+        )
 
     quantile_grid = root / "quantile-merge-ablation-search" / "search_grid.csv"
     if quantile_grid.exists():
