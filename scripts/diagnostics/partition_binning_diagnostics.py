@@ -105,6 +105,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-test", type=int, default=None, help="Override n_test when configs are missing.")
     parser.add_argument("--seed-split", type=int, default=None, help="Override seed split when configs are missing.")
     parser.add_argument("--bin-split", choices=["res", "cal"], default=None, help="Split used to build bins.")
+    parser.add_argument("--x-axis", choices=["center", "index"], default="center", help="X-axis for CI plot.")
     return parser.parse_args()
 
 
@@ -299,11 +300,17 @@ def main() -> None:
     (output_dir / "summary.json").write_text(json.dumps(_serialize(summary), indent=2), encoding="utf-8")
 
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    ax.plot(centers, uppers, color="tab:red", lw=1.2, label="Upper CI")
-    ax.plot(centers, lowers, color="tab:blue", lw=1.2, label="Lower CI")
-    ax.fill_between(centers, lowers, uppers, color="tab:blue", alpha=0.12)
-    ax.scatter(centers, means, s=12, color="black", label=r"$\widehat{\eta}(z)$")
-    ax.set_xlabel("Score bin center (quantile)")
+    if args.x_axis == "index":
+        x_vals = np.arange(centers.shape[0])
+        x_label = "Bin index"
+    else:
+        x_vals = centers
+        x_label = "Score bin center (quantile)"
+    ax.plot(x_vals, uppers, color="tab:red", lw=1.2, label="Upper CI")
+    ax.plot(x_vals, lowers, color="tab:blue", lw=1.2, label="Lower CI")
+    ax.fill_between(x_vals, lowers, uppers, color="tab:blue", alpha=0.12)
+    ax.scatter(x_vals, means, s=12, color="black", label=r"$\widehat{\eta}(z)$")
+    ax.set_xlabel(x_label)
     ax.set_ylabel("Confidence interval")
     ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
     fig.tight_layout()
