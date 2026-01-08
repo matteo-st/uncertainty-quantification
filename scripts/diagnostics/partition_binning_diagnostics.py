@@ -283,7 +283,11 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
     finite_widths = widths[np.isfinite(widths)]
-    ax.hist(finite_widths, bins=20, color="tab:gray", alpha=0.8)
+    if finite_widths.size == 0:
+        ax.text(0.5, 0.5, "No finite widths", ha="center", va="center")
+    else:
+        bins = 1 if np.isclose(finite_widths.min(), finite_widths.max()) else 20
+        ax.hist(finite_widths, bins=bins, color="tab:gray", alpha=0.8)
     ax.set_xlabel(r"Bin width $\Delta s_z$")
     ax.set_ylabel("Count")
     fig.tight_layout()
