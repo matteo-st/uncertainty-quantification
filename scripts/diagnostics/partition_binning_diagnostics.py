@@ -104,6 +104,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-cal", type=int, default=None, help="Override n_cal when configs are missing.")
     parser.add_argument("--n-test", type=int, default=None, help="Override n_test when configs are missing.")
     parser.add_argument("--seed-split", type=int, default=None, help="Override seed split when configs are missing.")
+    parser.add_argument("--bin-split", choices=["res", "cal"], default=None, help="Split used to build bins.")
     return parser.parse_args()
 
 
@@ -129,6 +130,20 @@ def _build_split_indices(n_total: int, n_res, n_cal, n_test, seed_split: int) ->
     n_test_samples = _resolve_count(n_test, n_total, "n_test")
     test_idx = perm[n_total - n_test_samples :]
     return np.asarray(test_idx, dtype=int)
+
+
+def _build_indices(n_total: int, n_res, n_cal, n_test, seed_split: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    perm = list(range(n_total))
+    if seed_split is not None:
+        rng = random.Random(seed_split)
+        rng.shuffle(perm)
+    n_cal_samples = _resolve_count(n_cal, n_total, "n_cal")
+    n_res_samples = _resolve_count(n_res, n_total, "n_res")
+    n_test_samples = _resolve_count(n_test, n_total, "n_test")
+    cal_idx = np.asarray(perm[:n_cal_samples], dtype=int)
+    res_idx = np.asarray(perm[n_cal_samples : n_cal_samples + n_res_samples], dtype=int)
+    test_idx = np.asarray(perm[n_total - n_test_samples :], dtype=int)
+    return res_idx, cal_idx, test_idx
 
 
 def _apply_style() -> None:
@@ -158,12 +173,12 @@ def main() -> None:
     stats_path, stats = _load_stats(run_dir, args.n_clusters)
     clusters_path, clusters_test = _load_clusters_test(run_dir, args.n_clusters)
 
+    n_clusters = int(stats["cluster_intervals"].shape[1])
     bin_edges = stats.get("bin_edges")
     if bin_edges is not None:
         bin_edges = bin_edges.view(-1).numpy()
     else:
-        n_clusters = int(stats["cluster_intervals"].shape[1])
-        bin_edges = np.linspace(0.0, 1.0, n_clusters + 1)
+        bin_edges = None
 
     intervals = stats["cluster_intervals"].squeeze(0).numpy()
     lowers = intervals[:, 0]
@@ -190,17 +205,48 @@ def main() -> None:
 
     scores_binned = uppers[clusters_test]
 
+    seed_split = args.seed_split
+    if seed_split is None and run_dir.name.startswith("seed-split-"):
+        try:
+            seed_split = int(run_dir.name.split("-")[-1])
+        except ValueError:
+            seed_split = None
+    n_samples = dataset_cfg.get("n_samples", {}) if dataset_cfg else {}
+    n_res = args.n_res if args.n_res is not None else n_samples.get("res", 0)
+    n_cal = args.n_cal if args.n_cal is not None else n_samples.get("cal", 0)
+    n_test = args.n_test if args.n_test is not None else n_samples.get("test", 0)
+
+    edges = None
+    edge_min = float(np.min(score_cont))
+    edge_max = float(np.max(score_cont))
+    if bin_edges is not None:
+        if bin_edges.size == n_clusters - 1:
+            res_idx, cal_idx, _ = _build_indices(
+                n_total=score_cont.shape[0],
+                n_res=n_res,
+                n_cal=n_cal,
+                n_test=n_test,
+                seed_split=seed_split,
+            )
+            bin_split = args.bin_split
+            if bin_split is None:
+                bin_split = "cal" if n_cal else "res"
+            if bin_split == "res":
+                bin_scores = score_cont[res_idx] if res_idx.size else score_cont
+            else:
+                bin_scores = score_cont[cal_idx] if cal_idx.size else score_cont
+            edge_min = float(np.min(bin_scores))
+            edge_max = float(np.max(bin_scores))
+            edges = np.concatenate([[edge_min], bin_edges, [edge_max]])
+        elif bin_edges.size == n_clusters + 1:
+            edges = bin_edges
+    if edges is None:
+        edges = np.linspace(0.0, 1.0, n_clusters + 1)
+    if not np.isfinite(edges).all():
+        edges = np.where(np.isneginf(edges), edge_min, edges)
+        edges = np.where(np.isposinf(edges), edge_max, edges)
+
     if score_cont.shape[0] != scores_binned.shape[0]:
-        seed_split = args.seed_split
-        if seed_split is None and run_dir.name.startswith("seed-split-"):
-            try:
-                seed_split = int(run_dir.name.split("-")[-1])
-            except ValueError:
-                seed_split = None
-        n_samples = dataset_cfg.get("n_samples", {}) if dataset_cfg else {}
-        n_res = args.n_res if args.n_res is not None else n_samples.get("res", 0)
-        n_cal = args.n_cal if args.n_cal is not None else n_samples.get("cal", 0)
-        n_test = args.n_test if args.n_test is not None else n_samples.get("test", 0)
         test_idx = _build_split_indices(
             n_total=score_cont.shape[0],
             n_res=n_res,
@@ -220,16 +266,7 @@ def main() -> None:
     mask = counts_test > 0
     err_rate_test[mask] = err_test[mask] / counts_test[mask]
 
-    if not np.isfinite(bin_edges).all():
-        finite_min = float(np.min(score_cont))
-        finite_max = float(np.max(score_cont))
-        bin_edges = np.where(np.isneginf(bin_edges), finite_min, bin_edges)
-        bin_edges = np.where(np.isposinf(bin_edges), finite_max, bin_edges)
-
-    centers, widths = _centers_and_widths(bin_edges)
-    if centers.shape[0] != uppers.shape[0]:
-        bin_edges = np.linspace(0.0, 1.0, uppers.shape[0] + 1)
-        centers, widths = _centers_and_widths(bin_edges)
+    centers, widths = _centers_and_widths(edges)
     half_widths = 0.5 * (uppers - lowers)
 
     bin_table = {
@@ -266,7 +303,7 @@ def main() -> None:
     ax.plot(centers, lowers, color="tab:blue", lw=1.2, label="Lower CI")
     ax.fill_between(centers, lowers, uppers, color="tab:blue", alpha=0.12)
     ax.scatter(centers, means, s=12, color="black", label=r"$\widehat{\eta}(z)$")
-    ax.set_xlabel("Score bin center")
+    ax.set_xlabel("Score bin center (quantile)")
     ax.set_ylabel("Confidence interval")
     ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
     fig.tight_layout()
