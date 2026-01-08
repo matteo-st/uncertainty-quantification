@@ -13,6 +13,7 @@ Quantify how uniform-mass binning behaves when only a calibration split is avail
 - Seed splits: 1–9
 - Binning: uniform-mass bins learned on cal, CIs computed on cal
 - Metrics: ROC-AUC, FPR@95 on test
+- K grid: 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500
 
 ## Curves shown
 - Upper CI score with alpha in {0.05, 0.1, 0.5}
@@ -44,7 +45,7 @@ python scripts/diagnostics/ablation_k_test_curve.py \
   --n-test 5000 \
   --seed-splits 1 2 3 4 5 6 7 8 9 \
   --n-classes 10 \
-  --k-values 5 10 20 50 100 200 500 \
+  --k-values 5 10 20 30 50 75 100 150 200 300 500 \
   --space gini \
   --temperature 1.0 \
   --alpha-values 0.05 0.1 0.5 \
@@ -65,7 +66,7 @@ python scripts/diagnostics/ablation_k_test_curve.py \
   --n-test 5000 \
   --seed-splits 1 2 3 4 5 6 7 8 9 \
   --n-classes 100 \
-  --k-values 5 10 20 50 100 200 500 \
+  --k-values 5 10 20 30 50 75 100 150 200 300 500 \
   --space gini \
   --temperature 1.0 \
   --alpha-values 0.05 0.1 0.5 \
