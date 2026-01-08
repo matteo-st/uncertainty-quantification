@@ -20,20 +20,30 @@ def _load_yaml(path: Path) -> dict:
         return yaml.safe_load(handle) or {}
 
 
-def _load_stats(run_dir: Path) -> Tuple[Path, dict]:
-    candidates = sorted(run_dir.glob("partition_cluster_stats_n-clusters-*.pt"), key=lambda p: p.stat().st_mtime)
-    if not candidates:
-        raise FileNotFoundError(f"No partition_cluster_stats_n-clusters-*.pt in {run_dir}")
-    stats_path = candidates[-1]
+def _load_stats(run_dir: Path, n_clusters: int | None) -> Tuple[Path, dict]:
+    if n_clusters is not None:
+        stats_path = run_dir / f"partition_cluster_stats_n-clusters-{n_clusters}.pt"
+        if not stats_path.exists():
+            raise FileNotFoundError(f"Missing {stats_path}")
+    else:
+        candidates = sorted(run_dir.glob("partition_cluster_stats_n-clusters-*.pt"), key=lambda p: p.stat().st_mtime)
+        if not candidates:
+            raise FileNotFoundError(f"No partition_cluster_stats_n-clusters-*.pt in {run_dir}")
+        stats_path = candidates[-1]
     stats = torch.load(stats_path, map_location="cpu")
     return stats_path, stats
 
 
-def _load_clusters_test(run_dir: Path) -> Tuple[Path, np.ndarray]:
-    candidates = sorted(run_dir.glob("clusters_test_n-clusters-*.pt"), key=lambda p: p.stat().st_mtime)
-    if not candidates:
-        raise FileNotFoundError(f"No clusters_test_n-clusters-*.pt in {run_dir}")
-    clusters_path = candidates[-1]
+def _load_clusters_test(run_dir: Path, n_clusters: int | None) -> Tuple[Path, np.ndarray]:
+    if n_clusters is not None:
+        clusters_path = run_dir / f"clusters_test_n-clusters-{n_clusters}.pt"
+        if not clusters_path.exists():
+            raise FileNotFoundError(f"Missing {clusters_path}")
+    else:
+        candidates = sorted(run_dir.glob("clusters_test_n-clusters-*.pt"), key=lambda p: p.stat().st_mtime)
+        if not candidates:
+            raise FileNotFoundError(f"No clusters_test_n-clusters-*.pt in {run_dir}")
+        clusters_path = candidates[-1]
     clusters = torch.load(clusters_path, map_location="cpu").view(-1).numpy().astype(int)
     return clusters_path, clusters
 
@@ -86,6 +96,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", required=True, help="Run directory (seed-split-*) with partition outputs.")
     parser.add_argument("--latent-test", required=True, help="Latent .pt file for the test split.")
     parser.add_argument("--output-dir", default=None, help="Output directory for diagnostics.")
+    parser.add_argument("--n-clusters", type=int, default=None, help="Select a specific K when multiple stats exist.")
+    parser.add_argument("--space", default=None, help="Override score space when configs are missing.")
+    parser.add_argument("--temperature", type=float, default=None, help="Override temperature when configs are missing.")
+    parser.add_argument("--normalize-gini", action="store_true", help="Override normalize_gini when configs are missing.")
+    parser.add_argument("--n-res", type=int, default=None, help="Override n_res when configs are missing.")
+    parser.add_argument("--n-cal", type=int, default=None, help="Override n_cal when configs are missing.")
+    parser.add_argument("--n-test", type=int, default=None, help="Override n_test when configs are missing.")
+    parser.add_argument("--seed-split", type=int, default=None, help="Override seed split when configs are missing.")
     return parser.parse_args()
 
 
@@ -137,8 +155,8 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _apply_style()
 
-    stats_path, stats = _load_stats(run_dir)
-    clusters_path, clusters_test = _load_clusters_test(run_dir)
+    stats_path, stats = _load_stats(run_dir, args.n_clusters)
+    clusters_path, clusters_test = _load_clusters_test(run_dir, args.n_clusters)
 
     bin_edges = stats.get("bin_edges")
     if bin_edges is not None:
@@ -160,12 +178,12 @@ def main() -> None:
     config_dir = run_dir / "configs"
     if not config_dir.exists():
         config_dir = run_dir.parent / "configs"
-    detection_cfg = _load_yaml(config_dir / "detection.yml")
-    dataset_cfg = _load_yaml(config_dir / "dataset.yml")
-    args_cfg = detection_cfg.get("postprocessor_args", {})
-    space = args_cfg.get("space", "gini")
-    temperature = float(args_cfg.get("temperature", 1.0))
-    normalize_gini = bool(args_cfg.get("normalize", False))
+    detection_cfg = _load_yaml(config_dir / "detection.yml") if config_dir.exists() else {}
+    dataset_cfg = _load_yaml(config_dir / "dataset.yml") if config_dir.exists() else {}
+    args_cfg = detection_cfg.get("postprocessor_args", {}) if detection_cfg else {}
+    space = args.space or args_cfg.get("space", "gini")
+    temperature = float(args.temperature if args.temperature is not None else args_cfg.get("temperature", 1.0))
+    normalize_gini = bool(args_cfg.get("normalize", False)) or bool(args.normalize_gini)
 
     score_cont = _compute_score(logits, space=space, temperature=temperature, normalize_gini=normalize_gini)
     score_cont = score_cont.detach().cpu().numpy()
@@ -173,18 +191,21 @@ def main() -> None:
     scores_binned = uppers[clusters_test]
 
     if score_cont.shape[0] != scores_binned.shape[0]:
-        seed_split = None
-        if run_dir.name.startswith("seed-split-"):
+        seed_split = args.seed_split
+        if seed_split is None and run_dir.name.startswith("seed-split-"):
             try:
                 seed_split = int(run_dir.name.split("-")[-1])
             except ValueError:
                 seed_split = None
-        n_samples = dataset_cfg.get("n_samples", {})
+        n_samples = dataset_cfg.get("n_samples", {}) if dataset_cfg else {}
+        n_res = args.n_res if args.n_res is not None else n_samples.get("res", 0)
+        n_cal = args.n_cal if args.n_cal is not None else n_samples.get("cal", 0)
+        n_test = args.n_test if args.n_test is not None else n_samples.get("test", 0)
         test_idx = _build_split_indices(
             n_total=score_cont.shape[0],
-            n_res=n_samples.get("res", 0),
-            n_cal=n_samples.get("cal", 0),
-            n_test=n_samples.get("test", 0),
+            n_res=n_res,
+            n_cal=n_cal,
+            n_test=n_test,
             seed_split=seed_split,
         )
         score_cont = score_cont[test_idx]
@@ -249,7 +270,7 @@ def main() -> None:
     ax.set_ylabel("Confidence interval")
     ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
     fig.tight_layout()
-    fig.savefig(output_dir / "ci_vs_score.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "ci_vs_score.png", bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
