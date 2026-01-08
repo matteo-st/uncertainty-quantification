@@ -31,6 +31,15 @@ Quantify how uniform-mass binning behaves when only a calibration split is avail
 ![CIFAR-100: ROC-AUC vs K (cal-only)](partition_binning_assets/unif_mass_calonly_alpha_cifar100_roc_auc.png)
 ![CIFAR-100: FPR@95 vs K (cal-only)](partition_binning_assets/unif_mass_calonly_alpha_cifar100_fpr.png)
 
+## Best-K diagnostics (seed 9)
+Best ROC-AUC on test (upper, alpha=0.05) occurs at K=20 for both datasets. The plots below show the bin-level confidence intervals and empirical means for that K using the seed-9 split (the last seed saved by the sweep).
+
+### CIFAR-10 / ResNet-34 (K=20)
+![CIFAR-10: CI vs score at K=20](partition_binning_assets/unif_mass_calonly_alpha_cifar10_k20_ci_vs_score.png)
+
+### CIFAR-100 / ResNet-34 (K=20)
+![CIFAR-100: CI vs score at K=20](partition_binning_assets/unif_mass_calonly_alpha_cifar100_k20_ci_vs_score.png)
+
 ## Reproduce
 Use `ablation_k_test_curve.py` with cal-only splits and seeds 1–9, then copy the plots into `partition_binning_assets/`.
 
