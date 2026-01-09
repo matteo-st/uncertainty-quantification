@@ -11,12 +11,12 @@ Measure test-set detection performance of continuous scores as a function of tem
 - Scores:
   - `max_proba`: negative max softmax probability (higher = more error-like)
   - `gini`: 1 − sum(p^2) (higher = more uncertain)
-  - `margin`: max proba − second max proba (higher = more confident)
+  - `margin`: **negative** (max proba − second max proba) so higher = more error-like
 - Temperatures: 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0
 - Precisions: float16, float32, float64
 - Metrics: ROC-AUC and FPR@95 on test
 
-Note: `margin` is reported in its raw form (higher = more confident), so it is directionally opposite to the error score used by the other two. This yields low ROC-AUC as expected; if you want a comparable error score, use `-margin`.
+Note: `margin` uses the negative margin so it aligns with the error score direction of the other two.
 
 ## Plots (mean ± std over seeds 1–9)
 ![Max-proba ROC-AUC vs temperature](partition_binning_assets/score_temperature/max_proba_roc_auc_vs_temperature.png)
@@ -41,3 +41,6 @@ python scripts/diagnostics/score_temperature_test_curve.py \
   --scores max_proba gini margin \
   --dtypes float16 float32 float64
 ```
+
+## Observation
+Max-proba and gini produce nearly identical ranking performance in this setup (max ROC-AUC difference ≈ 3.2e-4 and max FPR@95 difference ≈ 1.1e-3 for float32). This suggests the two scores are almost monotonic over the test set for these temperatures.

@@ -61,7 +61,7 @@ def _compute_scores(logits: torch.Tensor, temperature: float, score: str) -> tor
         return 1.0 - g
     if score == "margin":
         top2 = torch.topk(probs, k=2, dim=1).values
-        return top2[:, 0] - top2[:, 1]
+        return -(top2[:, 0] - top2[:, 1])
     raise ValueError(f"Unsupported score: {score}")
 
 
