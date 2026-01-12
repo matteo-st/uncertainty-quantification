@@ -10,7 +10,7 @@ BASELINE = {
     "roc_auc_test": 0.9256646961074102,
     "temperature": 0.7,
     "magnitude": 0.0,
-    "n_cal": 1000,
+    "n_cal": 5000,
 }
 
 
