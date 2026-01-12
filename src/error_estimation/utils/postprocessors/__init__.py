@@ -1,6 +1,7 @@
 from .odin_postprocessor import ODINPostprocessor
 from .base_postprocessor import BasePostprocessor
 from .doctor_postprocessor import DoctorPostprocessor
+from .margin_postprocessor import MarginPostprocessor
 from .partition_postprocessor import PartitionPostprocessor
 from .random_forest_postprocessor import RandomForestPostprocessor
 from .base_scikit_postprocessor import GenericScikitPostprocessor
@@ -12,6 +13,7 @@ postprocessors = {
     "odin": ODINPostprocessor,
     "msp": BasePostprocessor,
     "doctor": DoctorPostprocessor,
+    "margin": MarginPostprocessor,
     "partition": PartitionPostprocessor,
     "random_forest": RandomForestPostprocessor,
     "scikit": GenericScikitPostprocessor,
