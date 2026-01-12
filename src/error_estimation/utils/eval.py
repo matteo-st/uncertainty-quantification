@@ -552,7 +552,7 @@ class AblationDetector:
                 all_model_preds = all_model_preds[split_indices]
                 detector_labels_arr = (all_model_preds != all_labels)  # bool array
 
-            if self.postprocessor_name in ["doctor", "odin", "relu"]:
+            if self.postprocessor_name in ["doctor", "odin", "relu", "margin"]:
 
                 self.model.to(self.device)
                 self.model.eval()
@@ -616,7 +616,7 @@ class AblationDetector:
                 # now each detector
                 for i, det in enumerate(detectors):
                     # -- optionally craft 1‑step adv example per detector
-                    if self.postprocessor_name in ["doctor", "odin", "relu"]:
+                    if self.postprocessor_name in ["doctor", "odin", "relu", "margin"]:
                         magnitude = list_configs[i]['magnitude']
                         if magnitude > 0:
                             scores = self.get_pertubated_scores(inputs, det, magnitude)
