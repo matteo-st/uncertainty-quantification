@@ -6,12 +6,14 @@ import os
 from copy import deepcopy
 from pathlib import Path
 
+import pandas as pd
 import torch
 
 from error_estimation.evaluators import HyperparamsSearch
 from error_estimation.utils.config import Config
 from error_estimation.utils.datasets import get_dataset
 from error_estimation.utils.datasets.dataloader import prepare_ablation_dataloaders
+from error_estimation.utils.eval import AblationDetector
 from error_estimation.utils.experiment import (
     build_latent_paths,
     copy_configs,
@@ -19,10 +21,11 @@ from error_estimation.utils.experiment import (
     set_num_threads,
     write_run_metadata,
 )
-from error_estimation.utils.helper import setup_seeds
+from error_estimation.utils.helper import make_grid, metric_direction, setup_seeds
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
+from error_estimation.utils.postprocessors import get_postprocessor
 from error_estimation.utils.results_io import (
     append_summary_csv,
     build_metrics_payload,
@@ -49,6 +52,64 @@ METRIC_KEYS = [
     "aupr_success",
     "thr",
 ]
+
+
+def _evaluate_grid(
+    *,
+    run_dir: Path,
+    data_cfg: Config,
+    detection_cfg: Config,
+    model: torch.nn.Module,
+    cal_loader,
+    test_loader,
+    device: torch.device,
+    latent_paths: dict[str, str],
+) -> None:
+    if "postprocessor_grid" not in detection_cfg:
+        raise KeyError("Missing detection.postprocessor_grid for --eval-grid")
+    grid = list(make_grid(detection_cfg, key="postprocessor_grid"))
+    if not grid:
+        raise ValueError("Empty postprocessor_grid")
+
+    detectors = [
+        get_postprocessor(
+            postprocessor_name=detection_cfg["name"],
+            model=model,
+            cfg=cfg,
+            result_folder=str(run_dir),
+            device=device,
+        )
+        for cfg in grid
+    ]
+
+    grid_keys = list(detection_cfg["postprocessor_grid"].keys())
+
+    cal_eval = AblationDetector(
+        model=model,
+        dataloader=cal_loader,
+        device=device,
+        suffix="cal",
+        latent_path=latent_paths["cal"],
+        postprocessor_name=detection_cfg["name"],
+        cfg_dataset=data_cfg,
+        result_folder=str(run_dir),
+    )
+    cal_results = pd.concat(cal_eval.evaluate(grid, detectors=detectors, suffix="cal"), axis=0)
+
+    test_eval = AblationDetector(
+        model=model,
+        dataloader=test_loader,
+        device=device,
+        suffix="test",
+        latent_path=latent_paths["test"],
+        postprocessor_name=detection_cfg["name"],
+        cfg_dataset=data_cfg,
+        result_folder=str(run_dir),
+    )
+    test_results = pd.concat(test_eval.evaluate(grid, detectors=detectors, suffix="test"), axis=0)
+
+    grid_results = pd.merge(cal_results, test_results, on=grid_keys, how="outer")
+    grid_results.to_csv(run_dir / "grid_results.csv", index=False)
 
 
 def _collect_metrics(result_dir: Path) -> dict[str, float]:
@@ -156,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--save-search-results",
         action="store_true",
         help="Persist full search results (search.jsonl) per seed split",
+    )
+    parser.add_argument(
+        "--eval-grid",
+        action="store_true",
+        help="Evaluate the full postprocessor_grid on cal/test and save grid_results.csv",
     )
     parser.add_argument("--num-threads", type=int, default=None, help="Force CPU thread count")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
@@ -297,6 +363,42 @@ def run(args: argparse.Namespace) -> None:
                 "quantizer_metric": args.quantizer_metric,
             }
             with tracker.child_run(run_name=f"seed-split-{seed_split}", tags=child_tags):
+                if args.eval_grid:
+                    _evaluate_grid(
+                        run_dir=run_dir,
+                        data_cfg=data_cfg,
+                        detection_cfg=cfg_detection_run,
+                        model=model,
+                        cal_loader=cal_loader,
+                        test_loader=test_loader,
+                        device=device,
+                        latent_paths=latent_paths,
+                    )
+                    grid_path = run_dir / "grid_results.csv"
+                    if not grid_path.exists():
+                        raise FileNotFoundError(f"Missing grid results at {grid_path}")
+                    results = pd.read_csv(grid_path)
+                    best_row = select_best_row(results, args.metric, metric_direction(args.metric))
+                    meta = build_run_meta(
+                        data_cfg,
+                        model_cfg,
+                        cfg_detection_run,
+                        seed_split,
+                        mode="grid",
+                        run_tag=run_tag,
+                        extra={"result_dir": str(run_dir), "grid_results": str(grid_path)},
+                    )
+                    payload = build_metrics_payload(meta, best_row)
+                    metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
+                    append_summary_csv(results_root / "summary.csv", build_summary_row(meta, best_row))
+
+                    metrics = flatten_metrics(payload.get("metrics", {}))
+                    if metrics:
+                        tracker.log_metrics(metrics, step=seed_split)
+                    tracker.log_artifact(metrics_path)
+                    tracker.log_artifact(grid_path)
+                    tracker.log_artifacts(run_dir, artifact_path=f"results/{run_tag}/seed-split-{seed_split}")
+                    continue
                 evaluator = HyperparamsSearch(
                     model=model,
                     cfg_detection=cfg_detection_run,
