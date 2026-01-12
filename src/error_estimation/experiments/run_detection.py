@@ -261,7 +261,13 @@ def _evaluate_grid(
     )
     test_results = pd.concat(test_eval.evaluate(grid, detectors=detectors, suffix="test"), axis=0)
 
-    grid_results = pd.merge(cal_results, test_results, on=grid_keys, how="outer")
+    if grid_keys:
+        grid_results = pd.merge(cal_results, test_results, on=grid_keys, how="outer")
+    else:
+        # Raw-score / empty grids: merge by row order, keep config from cal_results.
+        drop_cols = [col for col in test_results.columns if col in cal_results.columns]
+        test_only = test_results.drop(columns=drop_cols, errors="ignore").reset_index(drop=True)
+        grid_results = pd.concat([cal_results.reset_index(drop=True), test_only], axis=1)
     grid_results.to_csv(run_dir / "grid_results.csv", index=False)
 
 
