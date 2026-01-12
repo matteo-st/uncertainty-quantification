@@ -29,4 +29,6 @@ experience_args:
     cal: test
 
 postprocessor_grid:
-  n_clusters: [10, 20, 50, 100, 200, 300, 500]
+  n_clusters: [5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]

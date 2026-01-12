@@ -1,6 +1,6 @@
 # Uniform-Mass Binning Investigation Report
 
-Last updated: 2026-01-08
+Last updated: 2026-01-12
 
 ## Objective
 Quantify how uniform-mass binning behaves when only a calibration split is available (n_cal=5000, n_res=0), and compare upper-bound scoring vs empirical-mean scoring against the continuous-score baseline.
@@ -8,12 +8,32 @@ Quantify how uniform-mass binning behaves when only a calibration split is avail
 ## Experimental setup (cal-only)
 - Datasets: CIFAR-10, CIFAR-100
 - Model: ResNet-34 (preprocessor: `ce`)
-- Score space: gini, temperature = 1.0
+- Score space: gini, temperature = 1.0 (for the plots below)
 - Splits: res = 0, cal = 5000, test = 5000
 - Seed splits: 1–9
 - Binning: uniform-mass bins learned on cal, CIs computed on cal
 - Metrics: ROC-AUC, FPR@95 on test
 - K grid: 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500
+
+## Existing uniform-mass experiments (local + server)
+### Local plots (this report)
+- Cal-only protocol, gini space, temperature = 1.0, alpha in {0.05, 0.1, 0.5}.
+- Curves and diagnostics are stored in `docs/partition_binning_assets/` (see below).
+
+### Server runs (read-only, `/home/lamsade/msammut/error_detection/error-estimation`)
+1) **Cal-only, n_cal=5000, CIFAR-10/ResNet-34, max_proba space**
+   - Path: `results_hyperparams/partition_unif-mass/cifar10_resnet34/n_cal-5000/seed-split-*/results_opt-fpr_qunatiz-metric-fpr-ratio-None_n-split-val-1_weight-std-0.0_mode-evaluation.csv`
+   - Seeds: 1–9
+   - Scores: `mean` and `upper`
+   - Bounds: Hoeffding
+   - Alpha: 0.05 and 0.5
+   - Temperature: 0.7, magnitude: 0.0
+   - K grid: 2–20 (step 1), then 30–5000 (step 10)
+
+2) **Res+cal protocol (seed 9 only)**
+   - Path: `results_main/partition_unif-mass/cifar10_resnet34/n_res-2000_n_cal-3000/seed-split-9/`
+   - Files: `results_opt-fpr_..._mode-evaluation.csv` and `hyperparams_results_opt-fpr_..._mode-search_cv_n-folds-10.csv`
+   - Useful for comparing a res-based selection vs cal-only selection.
 
 ## Curves shown
 - Upper CI score with alpha in {0.05, 0.1, 0.5}
