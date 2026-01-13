@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -52,6 +53,80 @@ METRIC_KEYS = [
     "aupr_success",
     "thr",
 ]
+
+_GRID_NUM_RE = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+
+
+def _coerce_grid_cell(value):
+    if isinstance(value, (list, tuple)):
+        if len(value) == 1:
+            return _coerce_grid_cell(value[0])
+        return value
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            inner = stripped[1:-1].strip()
+            if inner:
+                if "np.float" in inner:
+                    inner = re.sub(r"np\\.float\\d+\\(", "(", inner)
+                numbers = _GRID_NUM_RE.findall(inner)
+                if len(numbers) == 1:
+                    try:
+                        return float(numbers[0])
+                    except ValueError:
+                        return value
+        if "np.float64" in stripped:
+            cleaned = re.sub(r"np\\.float\\d+\\(", "(", stripped)
+            numbers = _GRID_NUM_RE.findall(cleaned)
+            if len(numbers) == 1:
+                try:
+                    return float(numbers[0])
+                except ValueError:
+                    return value
+    return value
+
+
+def _normalize_grid_results(df: pd.DataFrame) -> pd.DataFrame:
+    if any(col.endswith("_x") for col in df.columns):
+        drop_cols = set()
+        rename_map = {}
+        for col in df.columns:
+            if col.endswith("_x"):
+                base = col[:-2]
+                rename_map[col] = base
+                if f"{base}_y" in df.columns:
+                    drop_cols.add(f"{base}_y")
+        df = df.drop(columns=list(drop_cols), errors="ignore").rename(columns=rename_map)
+    return df.apply(lambda col: col.map(_coerce_grid_cell))
+
+
+def _dedupe_partition_grid(detection_cfg: Config, grid: list[dict]) -> list[dict]:
+    if detection_cfg.get("name") != "partition":
+        return grid
+    grid_spec = detection_cfg.get("postprocessor_grid", {})
+    if "score" not in grid_spec or "alpha" not in grid_spec:
+        return grid
+    alpha_values = grid_spec.get("alpha", [])
+    if not alpha_values:
+        return grid
+    default_alpha = alpha_values[0]
+    seen = set()
+    pruned = []
+    for cfg in grid:
+        if cfg.get("score") == "mean":
+            key = tuple((k, repr(cfg.get(k))) for k in sorted(cfg.keys()) if k != "alpha")
+            if key in seen:
+                continue
+            seen.add(key)
+            cfg = cfg.copy()
+            cfg["alpha"] = default_alpha
+        pruned.append(cfg)
+    return pruned
 
 
 def _resolve_indices(dataset) -> list[int] | None:
@@ -189,6 +264,7 @@ def _evaluate_grid(
     if "postprocessor_grid" not in detection_cfg:
         raise KeyError("Missing detection.postprocessor_grid for --eval-grid")
     grid = list(make_grid(detection_cfg, key="postprocessor_grid"))
+    grid = _dedupe_partition_grid(detection_cfg, grid)
     if not grid:
         raise ValueError("Empty postprocessor_grid")
 
@@ -268,6 +344,7 @@ def _evaluate_grid(
         drop_cols = [col for col in test_results.columns if col in cal_results.columns]
         test_only = test_results.drop(columns=drop_cols, errors="ignore").reset_index(drop=True)
         grid_results = pd.concat([cal_results.reset_index(drop=True), test_only], axis=1)
+    grid_results = _normalize_grid_results(grid_results)
     grid_results.to_csv(run_dir / "grid_results.csv", index=False)
 
 

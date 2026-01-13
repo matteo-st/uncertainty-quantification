@@ -108,7 +108,7 @@ From `docs/temperature_magnitude_report.md` (CIFAR-10 / ResNet-34, n_cal=5000, s
 | doctor | best roc_auc_cal | 0.756 ± 0.068 | 0.0020 ± 0.0000 | 0.1931 ± 0.0149 | 0.9378 ± 0.0033 |
 | margin | best roc_auc_cal | 0.722 ± 0.042 | 0.0020 ± 0.0000 | 0.1893 ± 0.0155 | 0.9371 ± 0.0032 |
 
-### Uniform-mass (max_proba, alpha=0.5)
+### Uniform-mass - max_proba
 Source: server sweep in `/home/lamsade/msammut/error_detection/error-estimation/results_hyperparams/partition_unif-mass/cifar10_resnet34/n_cal-5000/seed-split-*/results_opt-fpr_qunatiz-metric-fpr-ratio-None_n-split-val-1_weight-std-0.0_mode-evaluation.csv`.
 - Dataset/model: CIFAR-10 / ResNet-34
 - Protocol: cal-only (n_res=0, n_cal=5000, n_test=5000), seeds 1–9
@@ -163,3 +163,72 @@ Cal-based selection (pending):
 | upper_alpha=0.05 | best roc_auc_test | 21.1 ± 3.1 | 0.4500 ± 0.0243 | 0.8752 ± 0.0035 |
 | upper_alpha=0.1 | best roc_auc_test | 21.1 ± 3.1 | 0.4500 ± 0.0243 | 0.8752 ± 0.0035 |
 | upper_alpha=0.5 | best roc_auc_test | 21.1 ± 3.1 | 0.4500 ± 0.0243 | 0.8752 ± 0.0035 |
+
+### Uniform-mass grid search (gini, cal-only) from local `results/partition_binning`
+Source folders:
+- CIFAR-10: `results/partition_binning/cifar10/resnet34_ce/partition/runs/unif-mass-grid-20260112/`
+- CIFAR-100: `results/partition_binning/cifar100/resnet34_ce/partition/runs/unif-mass-grid-20260112/`
+
+Protocol: cal-only (n_res=0, n_cal=5000, n_test=5000), seeds 1–9.  
+Space: gini, bound: Hoeffding, score in {mean, upper}, alpha in {0.05, 0.1, 0.5}.  
+K grid: 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500.
+
+Note: for score=mean, alpha is not used (mean errors ignore interval width). Results are identical across alpha, so mean rows are reported once with `alpha=any`.
+
+Selection is per-seed best (by cal or test), then mean ± std reported for K, FPR, and ROC-AUC.
+
+**CIFAR-10 / ResNet-34**
+
+Cal-based selection:
+| method | selection | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| raw-score (gini) | n/a | 1.0 ± 0.0 | 0.3426 ± 0.0553 | 0.9256 ± 0.0037 |
+| unif-mass (mean, alpha=any) | best fpr_cal | 500.0 ± 0.0 | 1.0000 ± 0.0000 | 0.8681 ± 0.0123 |
+| unif-mass (upper, alpha=0.05) | best fpr_cal | 500.0 ± 0.0 | 0.8314 ± 0.0096 | 0.8670 ± 0.0118 |
+| unif-mass (upper, alpha=0.1) | best fpr_cal | 500.0 ± 0.0 | 0.8314 ± 0.0096 | 0.8670 ± 0.0118 |
+| unif-mass (upper, alpha=0.5) | best fpr_cal | 500.0 ± 0.0 | 0.8319 ± 0.0092 | 0.8673 ± 0.0120 |
+| unif-mass (mean, alpha=any) | best roc_auc_cal | 500.0 ± 0.0 | 1.0000 ± 0.0000 | 0.8681 ± 0.0123 |
+| unif-mass (upper, alpha=0.05) | best roc_auc_cal | 500.0 ± 0.0 | 0.8314 ± 0.0096 | 0.8670 ± 0.0118 |
+| unif-mass (upper, alpha=0.1) | best roc_auc_cal | 500.0 ± 0.0 | 0.8314 ± 0.0096 | 0.8670 ± 0.0118 |
+| unif-mass (upper, alpha=0.5) | best roc_auc_cal | 500.0 ± 0.0 | 0.8319 ± 0.0092 | 0.8673 ± 0.0120 |
+
+Test-based selection (oracle):
+| method | selection | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| raw-score (gini) | n/a | 1.0 ± 0.0 | 0.3426 ± 0.0553 | 0.9256 ± 0.0037 |
+| unif-mass (mean, alpha=any) | best fpr_test | 11.7 ± 8.3 | 0.3967 ± 0.1079 | 0.9033 ± 0.0181 |
+| unif-mass (upper, alpha=0.05) | best fpr_test | 11.7 ± 8.3 | 0.3967 ± 0.1079 | 0.9033 ± 0.0180 |
+| unif-mass (upper, alpha=0.1) | best fpr_test | 11.7 ± 8.3 | 0.3967 ± 0.1079 | 0.9033 ± 0.0180 |
+| unif-mass (upper, alpha=0.5) | best fpr_test | 11.7 ± 8.3 | 0.3967 ± 0.1079 | 0.9033 ± 0.0180 |
+| unif-mass (mean, alpha=any) | best roc_auc_test | 24.4 ± 5.3 | 0.4403 ± 0.1139 | 0.9173 ± 0.0082 |
+| unif-mass (upper, alpha=0.05) | best roc_auc_test | 25.6 ± 5.3 | 0.4391 ± 0.1123 | 0.9174 ± 0.0080 |
+| unif-mass (upper, alpha=0.1) | best roc_auc_test | 25.6 ± 5.3 | 0.4391 ± 0.1123 | 0.9174 ± 0.0080 |
+| unif-mass (upper, alpha=0.5) | best roc_auc_test | 25.6 ± 5.3 | 0.4391 ± 0.1123 | 0.9174 ± 0.0080 |
+
+**CIFAR-100 / ResNet-34**
+
+Cal-based selection:
+| method | selection | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| raw-score (gini) | n/a | 1.0 ± 0.0 | 0.4158 ± 0.0159 | 0.8772 ± 0.0040 |
+| unif-mass (mean, alpha=any) | best fpr_cal | 258.3 ± 84.8 | 0.6155 ± 0.1529 | 0.8603 ± 0.0067 |
+| unif-mass (upper, alpha=0.05) | best fpr_cal | 258.3 ± 84.8 | 0.5814 ± 0.0660 | 0.8602 ± 0.0065 |
+| unif-mass (upper, alpha=0.1) | best fpr_cal | 258.3 ± 84.8 | 0.5814 ± 0.0660 | 0.8603 ± 0.0065 |
+| unif-mass (upper, alpha=0.5) | best fpr_cal | 258.3 ± 84.8 | 0.5814 ± 0.0660 | 0.8606 ± 0.0064 |
+| unif-mass (mean, alpha=any) | best roc_auc_cal | 500.0 ± 0.0 | 0.9472 ± 0.1585 | 0.8445 ± 0.0059 |
+| unif-mass (upper, alpha=0.05) | best roc_auc_cal | 500.0 ± 0.0 | 0.9391 ± 0.1556 | 0.8421 ± 0.0061 |
+| unif-mass (upper, alpha=0.1) | best roc_auc_cal | 500.0 ± 0.0 | 0.9391 ± 0.1556 | 0.8436 ± 0.0061 |
+| unif-mass (upper, alpha=0.5) | best roc_auc_cal | 500.0 ± 0.0 | 0.9391 ± 0.1556 | 0.8443 ± 0.0058 |
+
+Test-based selection (oracle):
+| method | selection | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| raw-score (gini) | n/a | 1.0 ± 0.0 | 0.4158 ± 0.0159 | 0.8772 ± 0.0040 |
+| unif-mass (mean, alpha=any) | best fpr_test | 57.2 ± 25.3 | 0.4282 ± 0.0165 | 0.8721 ± 0.0042 |
+| unif-mass (upper, alpha=0.05) | best fpr_test | 57.2 ± 25.3 | 0.4282 ± 0.0165 | 0.8721 ± 0.0043 |
+| unif-mass (upper, alpha=0.1) | best fpr_test | 57.2 ± 25.3 | 0.4282 ± 0.0165 | 0.8721 ± 0.0043 |
+| unif-mass (upper, alpha=0.5) | best fpr_test | 57.2 ± 25.3 | 0.4282 ± 0.0165 | 0.8721 ± 0.0043 |
+| unif-mass (mean, alpha=any) | best roc_auc_test | 21.1 ± 3.3 | 0.4500 ± 0.0258 | 0.8752 ± 0.0037 |
+| unif-mass (upper, alpha=0.05) | best roc_auc_test | 21.1 ± 3.3 | 0.4500 ± 0.0258 | 0.8752 ± 0.0037 |
+| unif-mass (upper, alpha=0.1) | best roc_auc_test | 21.1 ± 3.3 | 0.4500 ± 0.0258 | 0.8752 ± 0.0037 |
+| unif-mass (upper, alpha=0.5) | best roc_auc_test | 21.1 ± 3.3 | 0.4500 ± 0.0258 | 0.8752 ± 0.0037 |

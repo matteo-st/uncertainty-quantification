@@ -621,6 +621,11 @@ class HyperparamsSearch(EvaluatorAblation):
 
 
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=False)
+        cv_values = self.values["res"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            cv_values = self.values["cal"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            raise ValueError("Cross-validation requires non-empty res or cal values.")
 
         
         list_results = []
@@ -895,24 +900,24 @@ class HyperparamsSearch(EvaluatorAblation):
             val_metrics = {metric: [] for metric in ["fpr", "tpr", "thr", "roc_auc", "accuracy", "aurc", "aupr_in", "aupr_out"]}
             dec_results = []
             for _, (tr_idx, va_idx) in enumerate(skf.split(
-                np.zeros_like(self.values["res"]["detector_labels"]), 
-                self.values["res"]["detector_labels"]), 1):
+                np.zeros_like(cv_values["detector_labels"]), 
+                cv_values["detector_labels"]), 1):
 
-                dec.fit(logits=self.values["res"]["logits"][tr_idx], detector_labels=self.values["res"]["detector_labels"][tr_idx])
+                dec.fit(logits=cv_values["logits"][tr_idx], detector_labels=cv_values["detector_labels"][tr_idx])
                 # Evaluate on validation set
 
-                train_conf = dec(logits=self.values["res"]["logits"][tr_idx])
-                val_conf = dec(logits=self.values["res"]["logits"][va_idx])
+                train_conf = dec(logits=cv_values["logits"][tr_idx])
+                val_conf = dec(logits=cv_values["logits"][va_idx])
 
 
                 for split in ["tr_cross", "val_cross"]:
                     if split == "tr_cross":
                         conf = train_conf
-                        detector_labels = self.values["res"]["detector_labels"][tr_idx]
+                        detector_labels = cv_values["detector_labels"][tr_idx]
                         metrics = tr_metrics
                     else:
                         conf = val_conf
-                        detector_labels = self.values["res"]["detector_labels"][va_idx]
+                        detector_labels = cv_values["detector_labels"][va_idx]
                         metrics = val_metrics
                     results = compute_all_metrics(
                         conf=conf.cpu().numpy(),
