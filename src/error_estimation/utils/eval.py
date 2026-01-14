@@ -492,8 +492,11 @@ class AblationDetector:
         # inputs = Variable(inputs.clone(), requires_grad=True)
         adv_logits = self.model(inputs)
         scores = detector(logits=adv_logits)           # initial
-        # backprop on log-score
-        loss = torch.log(scores + 1e-12).sum()
+        # backprop on a positive score (ODIN/others can be negative)
+        scores_for_loss = scores
+        if torch.any(scores_for_loss <= 0):
+            scores_for_loss = scores_for_loss.abs()
+        loss = torch.log(scores_for_loss + 1e-12).sum()
         # loss = torch.log(scores.clamp_min(1e-12)).sum()
         # loss.backward()
         # step and detach
@@ -558,7 +561,7 @@ class AblationDetector:
                 self.model.eval()
                 all_scores = [np.zeros(n_samples, dtype=float) for _ in range(n_det)]
                 for idx, dec in tqdm(enumerate(detectors), total=len(detectors), desc="Getting Detectors Scores", leave=False):
-                    magnitude = list_configs[idx]['magnitude']
+                    magnitude = float(list_configs[idx].get("magnitude", 0.0))
                     
                     if magnitude > 0:
                         
@@ -617,7 +620,7 @@ class AblationDetector:
                 for i, det in enumerate(detectors):
                     # -- optionally craft 1‑step adv example per detector
                     if self.postprocessor_name in ["doctor", "odin", "relu", "margin"]:
-                        magnitude = list_configs[i]['magnitude']
+                        magnitude = float(list_configs[i].get("magnitude", 0.0))
                         if magnitude > 0:
                             scores = self.get_pertubated_scores(inputs, det, magnitude)
                         else:

@@ -284,6 +284,7 @@ def _evaluate_grid(
     if detection_cfg.get("name") == "partition":
         exp_args = detection_cfg.get("experience_args", {})
         n_epochs = exp_args.get("n_epochs", {})
+        fit_partition_on_cal = exp_args.get("fit_partition_on_cal", False)
         res_values = None
         if data_cfg.get("n_samples", {}).get("res", 0) > 0 and res_loader is not None:
             res_values = _load_latent_values(
@@ -300,7 +301,10 @@ def _evaluate_grid(
             device=device,
             n_epochs=n_epochs.get("cal", 1),
         )
-        fit_values = res_values if res_values is not None else cal_values
+        if fit_partition_on_cal or res_values is None:
+            fit_values = cal_values
+        else:
+            fit_values = res_values
         for detector in detectors:
             detector.fit(
                 logits=fit_values["logits"],

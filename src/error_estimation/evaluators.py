@@ -88,6 +88,17 @@ class EvaluatorAblation:
             self.model, self.cal_loader, device=self.device, suffix="cal", latent_path=self.latent_paths["cal"],
             cfg_dataset=self.cfg_dataset, postprocessor_name=self.postprocessor_name
         )
+        self.evaluator_res = None
+        if self.res_loader is not None:
+            self.evaluator_res = AblationDetector(
+                self.model,
+                self.res_loader,
+                device=self.device,
+                suffix="res",
+                latent_path=self.latent_paths["res"],
+                cfg_dataset=self.cfg_dataset,
+                postprocessor_name=self.postprocessor_name,
+            )
 
 
         self.evaluator_test = AblationDetector(
@@ -101,6 +112,10 @@ class EvaluatorAblation:
         self.mode = mode
         self.n_folds = self.cfg_detection.get("experience_args", {}).get("n_folds", 5)
         self.fit_after_cv = self.cfg_detection.get("experience_args", {}).get("fit_after_cv", False)
+        self.fit_partition_on_cal = self.cfg_detection.get("experience_args", {}).get(
+            "fit_partition_on_cal",
+            False,
+        )
         self.ratio_res_split = self.cfg_detection.get("experience_args", {}).get("ratio_res_split", None)
         self.n_split_val = self.cfg_detection.get("experience_args", {}).get("n_split_val", 1)
         self.weight_std = self.cfg_detection.get("experience_args", {}).get("weight_std", 0.0)
@@ -438,7 +453,10 @@ class EvaluatorAblation:
     
 
     def fit_clustering(self):
-        if self.res_loader is None:
+        use_cal_for_partition = (
+            self.fit_partition_on_cal and self.postprocessor_name in ["partition", "clustering"]
+        )
+        if self.res_loader is None or use_cal_for_partition:
             print("Fitting best detector on full training data")
             t0 = time.time()
             self.detector.fit(
@@ -588,11 +606,21 @@ class HyperparamsSearch(EvaluatorAblation):
                 device=self.device
                 ) for cfg in self.hyperparam_combination]
 
-        list_results = self.evaluator_cal.evaluate(self.hyperparam_combination, self.detectors)
+        evaluator = self.evaluator_cal
+        suffix = "cal"
+        if self.mode == "search_res" and self.evaluator_res is not None:
+            evaluator = self.evaluator_res
+            suffix = "res"
+
+        list_results = evaluator.evaluate(
+            self.hyperparam_combination,
+            self.detectors,
+            suffix=suffix,
+        )
         hyperparam_results = pd.concat(list_results, axis=0)
                    
 
-        scores = [np.mean(res[f"{self.metric}_cal"].values) for res in list_results]
+        scores = [np.mean(res[f"{self.metric}_{suffix}"].values) for res in list_results]
         self.best_idx = select_best_index(scores, self.metric_direction)
         self.config = self.hyperparam_combination[self.best_idx]
         self.best_result = list_results[self.best_idx]
