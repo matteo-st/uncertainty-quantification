@@ -900,8 +900,12 @@ class HyperparamsSearch(EvaluatorAblation):
 
 
         skf = StratifiedKFold(n_splits=self.n_folds, shuffle=False)
+        cv_values = self.values["res"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            cv_values = self.values["cal"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            raise ValueError("Cross-validation requires non-empty res or cal values.")
 
-        
         list_results = []
 
         for dec_idx, dec in tqdm(enumerate(self.detectors),total=len(self.detectors), desc="Cross validation", disable=False):
