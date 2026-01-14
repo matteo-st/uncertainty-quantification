@@ -631,6 +631,11 @@ class HyperparamsSearch(EvaluatorAblation):
             cv_values = self.values["cal"]
         if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
             raise ValueError("Cross-validation requires non-empty res or cal values.")
+        cv_values = self.values["res"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            cv_values = self.values["cal"]
+        if cv_values is None or len(cv_values.get("detector_labels", [])) == 0:
+            raise ValueError("Cross-validation requires non-empty res or cal values.")
 
         
         list_results = []
