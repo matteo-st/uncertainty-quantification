@@ -22,6 +22,11 @@ experience_args:
   n_folds: 5
   fit_after_cv: True
   fit_partition_on_cal: True
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag_prefix: doctor-res-grid-nres{n_res}-
   n_epochs:
     res: 1
     cal: 1

@@ -129,6 +129,96 @@ def _dedupe_partition_grid(detection_cfg: Config, grid: list[dict]) -> list[dict
     return pruned
 
 
+def _resolve_raw_score_run_tag(
+    *,
+    runs_root: Path,
+    seed_split: int,
+    selection_cfg: dict,
+    n_res: int | None,
+    source_name: str,
+) -> str:
+    run_tag = selection_cfg.get("run_tag")
+    if run_tag:
+        return run_tag
+    prefix = selection_cfg.get("run_tag_prefix")
+    if prefix:
+        if n_res is None:
+            raise ValueError("raw_score_selection.run_tag_prefix requires n_res.")
+        prefix = prefix.format(n_res=n_res)
+    else:
+        if n_res is None:
+            raise ValueError("raw_score_selection requires n_res or run_tag.")
+        prefix = f"{source_name}-res-grid-nres{n_res}-"
+    candidates = []
+    for run_dir in runs_root.iterdir():
+        if not run_dir.is_dir():
+            continue
+        if not run_dir.name.startswith(prefix):
+            continue
+        search_path = run_dir / f"seed-split-{seed_split}" / "search.jsonl"
+        if search_path.exists():
+            candidates.append((run_dir, search_path))
+    if not candidates:
+        raise FileNotFoundError(
+            f"No search.jsonl found under {runs_root} for prefix '{prefix}'."
+        )
+    run_dir = max(candidates, key=lambda item: item[0].stat().st_mtime)[0]
+    return run_dir.name
+
+
+def _apply_raw_score_selection(
+    *,
+    cfg_detection: Config,
+    data_cfg: Config,
+    model_cfg: Config,
+    seed_split: int,
+    root_dir: str | Path,
+) -> dict | None:
+    selection_cfg = cfg_detection.get("experience_args", {}).get("raw_score_selection")
+    if not selection_cfg:
+        return None
+    source_name = selection_cfg.get("postprocessor", "doctor")
+    n_res = data_cfg.get("n_samples", {}).get("res")
+    source_root = selection_cfg.get("root_dir", root_dir)
+    source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name})
+    runs_root = source_results_root / "runs"
+    run_tag = _resolve_raw_score_run_tag(
+        runs_root=runs_root,
+        seed_split=seed_split,
+        selection_cfg=selection_cfg,
+        n_res=n_res,
+        source_name=source_name,
+    )
+    search_path = runs_root / run_tag / f"seed-split-{seed_split}" / "search.jsonl"
+    if not search_path.exists():
+        raise FileNotFoundError(f"Missing raw score search results at {search_path}")
+    results = pd.read_json(search_path, lines=True)
+    metric = selection_cfg.get("metric", "fpr")
+    split = selection_cfg.get("split", "res")
+    metric_key = f"{metric}_{split}"
+    if metric_key not in results.columns:
+        raise KeyError(f"Missing metric '{metric_key}' in {search_path}")
+    direction = metric_direction(metric)
+    values = pd.to_numeric(results[metric_key], errors="coerce")
+    if not values.notna().any():
+        raise ValueError(f"No valid values for '{metric_key}' in {search_path}")
+    idx = values.idxmin() if direction == "min" else values.idxmax()
+    best_row = results.loc[idx].to_dict()
+    for key in ("temperature", "magnitude", "normalize"):
+        if key in best_row:
+            cfg_detection["postprocessor_args"][key] = best_row[key]
+            grid = cfg_detection.get("postprocessor_grid")
+            if isinstance(grid, dict) and key in grid:
+                grid[key] = [best_row[key]]
+    return {
+        "raw_score_source": source_name,
+        "raw_score_run_tag": run_tag,
+        "raw_score_metric": metric,
+        "raw_score_split": split,
+        "raw_score_search_path": str(search_path),
+    }
+
+
 def _resolve_indices(dataset) -> list[int] | None:
     indices = getattr(dataset, "indices", None)
     if indices is None:
@@ -595,6 +685,13 @@ def run(args: argparse.Namespace) -> None:
             cfg_detection_run = deepcopy(detection_cfg)
             if args.mode == "search_res":
                 cfg_detection_run["experience_args"]["ratio_res_split"] = 1.0
+            raw_score_meta = _apply_raw_score_selection(
+                cfg_detection=cfg_detection_run,
+                data_cfg=data_cfg,
+                model_cfg=model_cfg,
+                seed_split=seed_split,
+                root_dir=args.root_dir,
+            )
 
             child_tags = {
                 "seed_split": seed_split,
@@ -627,7 +724,11 @@ def run(args: argparse.Namespace) -> None:
                         seed_split,
                         mode="grid",
                         run_tag=run_tag,
-                        extra={"result_dir": str(run_dir), "grid_results": str(grid_path)},
+                        extra={
+                            "result_dir": str(run_dir),
+                            "grid_results": str(grid_path),
+                            **(raw_score_meta or {}),
+                        },
                     )
                     payload = build_metrics_payload(meta, best_row)
                     metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
@@ -667,7 +768,7 @@ def run(args: argparse.Namespace) -> None:
                     seed_split,
                     mode=args.mode,
                     run_tag=run_tag,
-                    extra={"result_dir": str(run_dir)},
+                    extra={"result_dir": str(run_dir), **(raw_score_meta or {})},
                 )
                 payload = build_metrics_payload(meta, best_row)
                 metrics_path = write_metrics_json(run_dir / "metrics.json", payload)
