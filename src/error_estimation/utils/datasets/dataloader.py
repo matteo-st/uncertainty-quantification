@@ -48,11 +48,15 @@ def prepare_ablation_dataloaders(
             raise TypeError(f"{name} must be float (ratio) or int (count), got {type(x).__name__}")
 
     def _change_transform(dataset, transform):
-            transform = get_model_essentials(
-                model_name,
-                data_name
-            )[f"{transform}_transforms"]
-            dataset.dataset.transform = transform
+        if transform is None:
+            return
+        if isinstance(transform, str) and transform.lower() in {"none", "null"}:
+            return
+        transform = get_model_essentials(
+            model_name,
+            data_name,
+        )[f"{transform}_transforms"]
+        dataset.dataset.transform = transform
             
     n = len(dataset)
 
