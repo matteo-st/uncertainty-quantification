@@ -121,6 +121,33 @@ def _plot_score_distribution(
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
+def _plot_u_rug(cdf_vals: np.ndarray, output_path: Path, title: str) -> None:
+    fig, ax = plt.subplots(figsize=(8, 2.0))
+    ax.eventplot([cdf_vals], orientation="horizontal", lineoffsets=0.0, linelengths=1.0, colors="#4C78A8")
+    ax.set_ylim(-0.5, 1.5)
+    ax.set_xlabel("u")
+    ax.set_yticks([])
+    ax.set_title(title)
+    ax.grid(alpha=0.2, linestyle=":")
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_u_counts(cdf_vals: np.ndarray, output_path: Path, title: str) -> tuple[int, int]:
+    unique, counts = np.unique(cdf_vals, return_counts=True)
+    fig, ax = plt.subplots(figsize=(8, 4.0))
+    ax.scatter(unique, counts, s=10, color="#F58518", alpha=0.8)
+    ax.set_xlabel("u")
+    ax.set_ylabel("count per u")
+    ax.set_title(title)
+    ax.grid(alpha=0.2, linestyle=":")
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return unique.size, int(counts.max(initial=0))
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Plot CDF transform for soft-kmeans scores.")
@@ -234,6 +261,19 @@ def main() -> None:
     fig.savefig(uhist_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
+    rug_path = output_dir / "soft_kmeans_cdf_transform_res_u_rug.png"
+    _plot_u_rug(
+        cdf_vals,
+        rug_path,
+        "CDF-transformed scores (rug plot)",
+    )
+    counts_path = output_dir / "soft_kmeans_cdf_transform_res_u_counts.png"
+    n_unique, max_count = _plot_u_counts(
+        cdf_vals,
+        counts_path,
+        "Counts per discrete u value",
+    )
+
     stats = {
         "n_res": int(scores.size),
         "temperature": float(args.temperature),
@@ -241,6 +281,8 @@ def main() -> None:
         "normalize": bool(args.normalize),
         "score_min": float(np.min(scores)),
         "score_max": float(np.max(scores)),
+        "u_unique": int(n_unique),
+        "u_max_count": int(max_count),
         "score_quantiles": {
             "q50": float(np.quantile(scores, 0.5)),
             "q90": float(np.quantile(scores, 0.9)),
