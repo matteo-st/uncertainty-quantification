@@ -27,7 +27,8 @@ experience_args:
     postprocessor: doctor
     metric: fpr
     split: res
-    run_tag_prefix: doctor-res-grid-nres{n_res}-
+    run_tag: doctor-res-grid-nres1000-20260114c
+    root_dir: ./results
   n_folds: None
   n_epochs:
     res: 1
