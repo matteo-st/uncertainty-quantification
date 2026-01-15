@@ -226,20 +226,24 @@ class PartitionPostprocessor(BasePostprocessor):
     def predict_clusters(self, x=None, logits=None):
 
         embs = self._extract_embeddings(x, logits)
-        if embs.dim() > 1 and embs.size(1) == 1:
-            embs = embs.squeeze(1)
 
         if self.method == "unif-width":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
             cluster = torch.floor(embs * self.n_clusters).long()
             cluster[cluster == self.n_clusters] = self.n_clusters - 1 # Handle edge case when proba_error == 1
             return cluster
         elif self.method == "unif-mass":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
 
             bin_edges = self.bin_edges.to(embs.device)
             # bucketize returns integers in [0, n_clusters-1]
             cluster = torch.bucketize(embs, bin_edges)
             return cluster  # (N,)
         elif self.method == "quantile-merge":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
             bin_edges = self.bin_edges.to(embs.device)
             cluster = torch.bucketize(embs, bin_edges[1:-1])
             return cluster
@@ -253,6 +257,8 @@ class PartitionPostprocessor(BasePostprocessor):
             else:
                 if self.method in ["kmeans_torch", "soft-kmeans_torch", "mutinfo_opt"]:
                     embs = embs.to(self.device)
+                    if embs.dim() == 1:
+                        embs = embs.unsqueeze(1)
                     cluster = self.clustering_algo.predict(embs).cpu()
                     if self.clustering_algo.best_init is not None:
                         cluster = cluster[self.clustering_algo.best_init, :].unsqueeze(0)
@@ -280,6 +286,8 @@ class PartitionPostprocessor(BasePostprocessor):
     def fit_quantizer(self, all_embs,  detector_labels, logits=None):
         if self.method in ["kmeans_torch", "soft-kmeans_torch"]:
             all_embs = all_embs.to(self.device)
+            if all_embs.dim() == 1:
+                all_embs = all_embs.unsqueeze(1)
             #print("All embs shape", all_embs.shape)
             clusters = self.clustering_algo.fit_predict(all_embs, self.n_clusters).squeeze(0)
             self.n_iter = self.clustering_algo.n_iter
