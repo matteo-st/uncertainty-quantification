@@ -213,7 +213,7 @@ def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) ->
     fig, ax = plt.subplots(figsize=(8.5, 5.0))
     ax.plot(edges, lower_steps, color="tab:blue", lw=1.6, label="Lower CI", drawstyle="steps-post")
     ax.plot(edges, upper_steps, color="tab:red", lw=1.6, label="Upper CI", drawstyle="steps-post")
-    ax.plot(edges, mean_steps, color="black", lw=1.4, label=r"$\widehat{\\eta}(u)$", drawstyle="steps-post")
+    ax.plot(edges, mean_steps, color="black", lw=1.4, label=r"$\widehat{\eta}(u)$", drawstyle="steps-post")
     ax.fill_between(edges, lower_steps, upper_steps, color="tab:blue", alpha=0.12, step="post")
     ax.set_xlabel("Transformed score (u)")
     ax.set_ylabel("Confidence interval")
