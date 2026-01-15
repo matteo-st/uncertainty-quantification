@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -22,9 +23,10 @@ from error_estimation.utils.experiment import (
     set_num_threads,
     write_run_metadata,
 )
-from error_estimation.utils.helper import make_grid, metric_direction, setup_seeds
+from error_estimation.utils.helper import make_grid, metric_direction, select_best_index, setup_seeds
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
+from error_estimation.utils.metrics import compute_all_metrics
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
 from error_estimation.utils.postprocessors import get_postprocessor
 from error_estimation.utils.results_io import (
@@ -350,6 +352,7 @@ def _evaluate_grid(
     test_loader,
     device: torch.device,
     latent_paths: dict[str, str],
+    select_init_metric: str | None,
 ) -> None:
     if "postprocessor_grid" not in detection_cfg:
         raise KeyError("Missing detection.postprocessor_grid for --eval-grid")
@@ -371,6 +374,7 @@ def _evaluate_grid(
 
     grid_keys = list(detection_cfg["postprocessor_grid"].keys())
 
+    res_results = None
     if detection_cfg.get("name") == "partition":
         exp_args = detection_cfg.get("experience_args", {})
         n_epochs = exp_args.get("n_epochs", {})
@@ -406,6 +410,40 @@ def _evaluate_grid(
                 detector_labels=cal_values["detector_labels"],
                 fit_clustering=False,
             )
+        if exp_args.get("select_init_on_res") and res_values is not None and select_init_metric:
+            select_direction = metric_direction(select_init_metric)
+            res_labels = res_values["detector_labels"].detach().cpu().numpy()
+            res_rows: list[dict[str, object]] = []
+            for cfg, detector in zip(grid, detectors):
+                with torch.no_grad():
+                    scores = detector(logits=res_values["logits"]).detach().cpu().numpy()
+                metrics = compute_all_metrics(conf=scores, detector_labels=res_labels)
+                best_idx = None
+                metric_values = metrics.get(select_init_metric)
+                if metric_values is not None:
+                    values = np.asarray(metric_values, dtype=float)
+                    if values.ndim == 0:
+                        values = values.reshape(1)
+                    best_idx = 0 if values.size == 1 else select_best_index(values, select_direction)
+                if best_idx is not None:
+                    for key, val in metrics.items():
+                        val_arr = np.asarray(val, dtype=float)
+                        if val_arr.ndim == 0:
+                            metrics[key] = float(val_arr)
+                        elif val_arr.size == 1:
+                            metrics[key] = float(val_arr[0])
+                        else:
+                            metrics[key] = float(val_arr[best_idx])
+                    clustering_algo = getattr(detector, "clustering_algo", None)
+                    if clustering_algo is not None:
+                        clustering_algo.best_init = int(best_idx)
+                row = dict(cfg)
+                for key, val in metrics.items():
+                    row[f"{key}_res"] = val
+                if best_idx is not None:
+                    row["init_res"] = int(best_idx)
+                res_rows.append(row)
+            res_results = pd.DataFrame(res_rows)
 
     cal_eval = AblationDetector(
         model=model,
@@ -438,6 +476,13 @@ def _evaluate_grid(
         drop_cols = [col for col in test_results.columns if col in cal_results.columns]
         test_only = test_results.drop(columns=drop_cols, errors="ignore").reset_index(drop=True)
         grid_results = pd.concat([cal_results.reset_index(drop=True), test_only], axis=1)
+    if res_results is not None:
+        if grid_keys:
+            grid_results = pd.merge(res_results, grid_results, on=grid_keys, how="outer")
+        else:
+            grid_results = pd.concat(
+                [res_results.reset_index(drop=True), grid_results.reset_index(drop=True)], axis=1
+            )
     grid_results = _normalize_grid_results(grid_results)
     grid_results.to_csv(run_dir / "grid_results.csv", index=False)
 
@@ -711,6 +756,7 @@ def run(args: argparse.Namespace) -> None:
                         test_loader=test_loader,
                         device=device,
                         latent_paths=latent_paths,
+                        select_init_metric=args.metric,
                     )
                     grid_path = run_dir / "grid_results.csv"
                     if not grid_path.exists():

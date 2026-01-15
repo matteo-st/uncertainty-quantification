@@ -22,6 +22,7 @@ postprocessor_args:
 experience_args:
   fit_after_cv: True
   fit_partition_on_cal: False
+  select_init_on_res: True
   n_folds: None
   n_epochs:
     res: 1
