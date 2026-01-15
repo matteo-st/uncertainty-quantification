@@ -410,38 +410,52 @@ def _evaluate_grid(
                 detector_labels=cal_values["detector_labels"],
                 fit_clustering=False,
             )
-        if exp_args.get("select_init_on_res") and res_values is not None and select_init_metric:
-            select_direction = metric_direction(select_init_metric)
+        if res_values is not None and res_loader is not None:
+            select_direction = metric_direction(select_init_metric) if select_init_metric else None
             res_labels = res_values["detector_labels"].detach().cpu().numpy()
             res_rows: list[dict[str, object]] = []
             for cfg, detector in zip(grid, detectors):
                 with torch.no_grad():
                     scores = detector(logits=res_values["logits"]).detach().cpu().numpy()
                 metrics = compute_all_metrics(conf=scores, detector_labels=res_labels)
-                best_idx = None
-                metric_values = metrics.get(select_init_metric)
-                if metric_values is not None:
-                    values = np.asarray(metric_values, dtype=float)
-                    if values.ndim == 0:
-                        values = values.reshape(1)
-                    best_idx = 0 if values.size == 1 else select_best_index(values, select_direction)
-                if best_idx is not None:
-                    for key, val in metrics.items():
-                        val_arr = np.asarray(val, dtype=float)
-                        if val_arr.ndim == 0:
-                            metrics[key] = float(val_arr)
-                        elif val_arr.size == 1:
-                            metrics[key] = float(val_arr[0])
-                        else:
-                            metrics[key] = float(val_arr[best_idx])
-                    clustering_algo = getattr(detector, "clustering_algo", None)
-                    if clustering_algo is not None:
-                        clustering_algo.best_init = int(best_idx)
                 row = dict(cfg)
                 for key, val in metrics.items():
                     row[f"{key}_res"] = val
-                if best_idx is not None:
-                    row["init_res"] = int(best_idx)
+                clustering_algo = getattr(detector, "clustering_algo", None)
+                if clustering_algo is not None and hasattr(clustering_algo, "results"):
+                    results = clustering_algo.results
+                    if hasattr(results, "lower_bound"):
+                        row["lower_bound_res"] = results.lower_bound.detach().cpu().numpy().tolist()
+                    if hasattr(results, "inertia"):
+                        row["inertia_res"] = results.inertia.detach().cpu().numpy().tolist()
+                    elif hasattr(results, "means") and hasattr(results, "log_resp"):
+                        try:
+                            embs = detector._extract_embeddings(
+                                logits=res_values["logits"]
+                            ).detach()
+                            if embs.dim() > 2:
+                                embs = embs.squeeze(0)
+                            centers = results.means.to(embs.device)
+                            labels = torch.argmax(results.log_resp.to(embs.device), dim=-1)
+                            inertia = clustering_algo._calculate_inertia(
+                                embs,
+                                centers.unsqueeze(0),
+                                labels.unsqueeze(0),
+                            )
+                            row["inertia_res"] = inertia.squeeze(0).detach().cpu().numpy().tolist()
+                        except Exception:
+                            pass
+                if exp_args.get("select_init_on_res") and select_init_metric and select_direction:
+                    metric_values = metrics.get(select_init_metric)
+                    if metric_values is not None:
+                        values = np.asarray(metric_values, dtype=float)
+                        if values.ndim == 0:
+                            values = values.reshape(1)
+                        if values.size >= 1:
+                            best_idx = 0 if values.size == 1 else select_best_index(values, select_direction)
+                            row["init_res"] = int(best_idx)
+                            if clustering_algo is not None:
+                                clustering_algo.best_init = int(best_idx)
                 res_rows.append(row)
             res_results = pd.DataFrame(res_rows)
 
