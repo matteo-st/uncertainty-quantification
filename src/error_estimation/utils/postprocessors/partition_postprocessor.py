@@ -74,6 +74,16 @@ class PartitionPostprocessor(BasePostprocessor):
         self.alpha = cfg.get("alpha", None)
         self.mutual_computation = cfg.get("mutual_computation", None)
         self.score = cfg.get("score", "upper")
+        self.score_transform = cfg.get("score_transform", None)
+        if isinstance(self.score_transform, str):
+            self.score_transform = self.score_transform.lower()
+        if self.score_transform in ["none", "null"]:
+            self.score_transform = None
+        self.score_transform_gamma = cfg.get("score_transform_gamma", None)
+        self.score_transform_eps = cfg.get("score_transform_eps", None)
+        self._score_transform_ref = None
+        if self.score_transform not in [None, "cdf", "rank", "cdf_logit", "cdf_power"]:
+            raise ValueError(f"Unsupported score_transform: {self.score_transform}")
 
         ### Bregman Divergence Parameters
         self.divergence = None
@@ -223,10 +233,45 @@ class PartitionPostprocessor(BasePostprocessor):
                 embs = torch.cat([embs, W * preds_onehot.to(embs.device)], dim=1)
         return embs
 
+    def _apply_score_transform(self, embs, fit=False):
+        if self.score_transform is None:
+            return embs
+        if self.method not in ["kmeans_torch", "soft-kmeans_torch"]:
+            return embs
+        if embs.dim() > 1 and embs.size(1) == 1:
+            embs = embs.squeeze(1)
+        if embs.dim() != 1:
+            return embs
+        if fit or self._score_transform_ref is None:
+            ref = torch.sort(embs.detach().cpu().float()).values
+            self._score_transform_ref = ref
+        ref = self._score_transform_ref
+        if ref is None or ref.numel() == 0:
+            return embs
+        ref_device = ref.to(embs.device)
+        counts = torch.searchsorted(ref_device, embs, right=True)
+        n = ref_device.numel()
+        if self.score_transform == "rank":
+            cdf = (counts.float() - 0.5) / n
+        else:
+            cdf = counts.float() / n
+        if self.score_transform in ["rank", "cdf_logit", "cdf_power"]:
+            eps = self.score_transform_eps
+            if eps is None:
+                eps = 0.5 / n
+            cdf = torch.clamp(cdf, eps, 1 - eps)
+        if self.score_transform == "cdf_power":
+            gamma = float(self.score_transform_gamma or 1.0)
+            cdf = torch.pow(cdf, gamma)
+        if self.score_transform == "cdf_logit":
+            cdf = torch.log(cdf / (1 - cdf))
+        return cdf
+
     
     def predict_clusters(self, x=None, logits=None):
 
         embs = self._extract_embeddings(x, logits)
+        embs = self._apply_score_transform(embs, fit=False)
 
         if self.method == "unif-width":
             if embs.dim() > 1 and embs.size(1) == 1:
@@ -292,6 +337,7 @@ class PartitionPostprocessor(BasePostprocessor):
         #     raise ValueError("Unsupported method")
     def fit_quantizer(self, all_embs,  detector_labels, logits=None):
         if self.method in ["kmeans_torch", "soft-kmeans_torch"]:
+            all_embs = self._apply_score_transform(all_embs, fit=True)
             all_embs = all_embs.to(self.device)
             if all_embs.dim() == 1:
                 all_embs = all_embs.unsqueeze(1)

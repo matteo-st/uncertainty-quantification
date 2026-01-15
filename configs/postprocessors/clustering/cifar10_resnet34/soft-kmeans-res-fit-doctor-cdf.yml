@@ -1,0 +1,47 @@
+name: partition
+postprocessor_args:
+  alpha: 0.05
+  method: soft-kmeans_torch
+  bound: bernstein
+  n_classes: 10
+
+  space: gini
+  reorder_embs: False
+  temperature: 2
+  normalize: False
+  pred_weights: 0
+
+  n_clusters: 100
+  cov_type: diag
+  init_scheme: kmeans
+  n_init: 5
+  max_iter: 300
+  clustering_seed: 1
+  lr: null
+  sig: null
+
+  score_transform: cdf
+
+experience_args:
+  fit_after_cv: True
+  fit_partition_on_cal: False
+  select_init_on_res: False
+  use_perturbed_logits: True
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag: doctor-res-grid-nres1000-20260114c
+    root_dir: ./results
+  n_folds: None
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [5, 10, 20, 30, 50, 75, 100, 150, 200, 300]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]
