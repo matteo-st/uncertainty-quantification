@@ -302,6 +302,7 @@ def _plot_ci_vs_s(
     mean_cal: np.ndarray,
     output_path: Path,
     title: str,
+    xlim: tuple[float, float] | None = None,
 ) -> None:
     edges = []
     lower_steps = []
@@ -329,6 +330,8 @@ def _plot_ci_vs_s(
     ax_top.set_yscale("log")
     ax_top.set_ylabel("count (res)")
     ax_top.grid(alpha=0.2, linestyle=":")
+    if xlim is not None:
+        ax_top.set_xlim(xlim)
 
     ax_bottom.plot(edges, lower_steps, color="tab:blue", lw=1.5, label="Lower CI", drawstyle="steps-post")
     ax_bottom.plot(edges, upper_steps, color="tab:red", lw=1.5, label="Upper CI", drawstyle="steps-post")
@@ -338,6 +341,8 @@ def _plot_ci_vs_s(
     ax_bottom.set_ylabel("confidence interval")
     ax_bottom.grid(alpha=0.2, linestyle=":")
     ax_bottom.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+    if xlim is not None:
+        ax_bottom.set_xlim(xlim)
 
     fig.suptitle(title, y=0.98)
     fig.tight_layout()
@@ -550,6 +555,17 @@ def main() -> None:
         mean_cal=mean_cal,
         output_path=output_dir / "soft_kmeans_cdf_ci_vs_s.png",
         title="CI vs s-space (bin boundaries from CDF soft-kmeans)",
+    )
+    zoom_max = float(np.quantile(s_vals, 0.9))
+    _plot_ci_vs_s(
+        s_vals=s_vals,
+        bins=bins,
+        lower=lower,
+        upper=upper,
+        mean_cal=mean_cal,
+        output_path=output_dir / "soft_kmeans_cdf_ci_vs_s_zoom.png",
+        title="CI vs s-space (zoomed near 0; q90)",
+        xlim=(float(np.min(s_vals)), zoom_max),
     )
 
     stats_path = output_dir / "soft_kmeans_cdf_ci_vs_u.json"
