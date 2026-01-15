@@ -653,7 +653,9 @@ $u_i = \\frac{\\mathrm{rank}(s_i) - 0.5}{n} \\in (0,1)$.
 The transformed score is $t_i = u_i$ (monotone). This spreads dense regions and compresses tails, which helps soft-kmeans avoid a single dominant cluster, but it can still fail when the res distribution is highly concentrated or when cal/test shift relative to res.
 
 Visualization (res split, seed 9; perturbed logits with magnitude=0.002; temperature=0.9, normalize=true):
-`results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res.png`
+`results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res_dist.png`  
+`results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res_cdf.png`  
+`results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res_u_hist.png`
 
 | rule | init_select | method | k | fpr_test | roc_auc_test |
 |---|---|---|---|---|---|

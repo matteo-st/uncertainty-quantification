@@ -77,10 +77,9 @@ def _rank_cdf(values: np.ndarray) -> np.ndarray:
     return (ranks + 0.5) / values.size
 
 
-def _plot_cdf_transform(
+def _plot_score_distribution(
     *,
     scores: np.ndarray,
-    cdf_vals: np.ndarray,
     output_path: Path,
     temperature: float,
     magnitude: float,
@@ -93,38 +92,30 @@ def _plot_cdf_transform(
             "axes.labelsize": 12,
         }
     )
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-
-    ax = axes[0]
-    ax.hist(scores, bins=50, color="#4C78A8", alpha=0.85)
-    ax.set_title("Res gini distribution")
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
+    ax.hist(scores, bins=60, color="#4C78A8", alpha=0.85)
+    ax.set_title("Res gini distribution (log y)")
     ax.set_xlabel("gini score")
     ax.set_ylabel("count")
-    for q in [0.5, 0.9, 0.99]:
+    for q, label in [(0.5, "q50"), (0.9, "q90"), (0.99, "q99")]:
         ax.axvline(np.quantile(scores, q), color="#72B7B2", linestyle="--", linewidth=1)
+        ax.text(
+            np.quantile(scores, q),
+            ax.get_ylim()[1] * 0.5,
+            label,
+            rotation=90,
+            va="center",
+            ha="right",
+            color="#72B7B2",
+        )
     ax.set_yscale("log")
-
-    ax = axes[1]
-    order = np.argsort(scores)
-    ax.plot(scores[order], cdf_vals[order], color="#F58518", linewidth=2)
-    ax.set_title("Empirical CDF (res)")
-    ax.set_xlabel("gini score")
-    ax.set_ylabel("u = rank(s)/n")
-    ax.set_ylim(0, 1)
-
-    ax = axes[2]
-    ax.hist(cdf_vals, bins=20, color="#54A24B", alpha=0.85)
-    ax.set_title("CDF-transformed scores")
-    ax.set_xlabel("u")
-    ax.set_ylabel("count")
-
     fig.suptitle(
         f"CDF transform on res (temp={temperature}, mag={magnitude}, normalize={normalize})",
         y=1.02,
     )
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=200)
+    fig.savefig(output_path, dpi=300)
     plt.close(fig)
 
 
@@ -196,18 +187,45 @@ def main() -> None:
         temperature=args.temperature,
         normalize=args.normalize,
     )
-    cdf_vals = _rank_cdf(scores)
-
     output_dir = Path(args.output_dir)
-    plot_path = output_dir / "soft_kmeans_cdf_transform_res.png"
-    _plot_cdf_transform(
+    dist_path = output_dir / "soft_kmeans_cdf_transform_res_dist.png"
+    _plot_score_distribution(
         scores=scores,
-        cdf_vals=cdf_vals,
-        output_path=plot_path,
+        output_path=dist_path,
         temperature=args.temperature,
         magnitude=args.magnitude,
         normalize=args.normalize,
     )
+    cdf_vals = _rank_cdf(scores)
+    order = np.argsort(scores)
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
+    ax.plot(scores[order], cdf_vals[order], color="#F58518", linewidth=2)
+    ax.set_title("Empirical CDF (res)")
+    ax.set_xlabel("gini score")
+    ax.set_ylabel("u = rank(s)/n")
+    ax.set_ylim(0, 1)
+    fig.suptitle(
+        f"CDF transform on res (temp={args.temperature}, mag={args.magnitude}, normalize={args.normalize})",
+        y=1.02,
+    )
+    fig.tight_layout()
+    cdf_path = output_dir / "soft_kmeans_cdf_transform_res_cdf.png"
+    fig.savefig(cdf_path, dpi=300)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
+    ax.hist(cdf_vals, bins=20, color="#54A24B", alpha=0.85)
+    ax.set_title("CDF-transformed scores")
+    ax.set_xlabel("u")
+    ax.set_ylabel("count")
+    fig.suptitle(
+        f"CDF transform on res (temp={args.temperature}, mag={args.magnitude}, normalize={args.normalize})",
+        y=1.02,
+    )
+    fig.tight_layout()
+    uhist_path = output_dir / "soft_kmeans_cdf_transform_res_u_hist.png"
+    fig.savefig(uhist_path, dpi=300)
+    plt.close(fig)
 
     stats = {
         "n_res": int(scores.size),
