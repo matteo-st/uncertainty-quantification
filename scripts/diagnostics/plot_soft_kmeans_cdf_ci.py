@@ -293,6 +293,59 @@ def _plot_u_vs_s_ranges(
     plt.close(fig)
 
 
+def _plot_ci_vs_s(
+    *,
+    s_vals: np.ndarray,
+    bins: list[dict[str, float]],
+    lower: np.ndarray,
+    upper: np.ndarray,
+    mean_cal: np.ndarray,
+    output_path: Path,
+    title: str,
+) -> None:
+    edges = []
+    lower_steps = []
+    upper_steps = []
+    mean_steps = []
+    for row in bins:
+        idx = int(row["cluster"])
+        edges.extend([row["s_min"], row["s_max"]])
+        lower_steps.extend([lower[idx], lower[idx]])
+        upper_steps.extend([upper[idx], upper[idx]])
+        mean_steps.extend([mean_cal[idx], mean_cal[idx]])
+
+    edges = np.asarray(edges)
+    lower_steps = np.asarray(lower_steps)
+    upper_steps = np.asarray(upper_steps)
+    mean_steps = np.asarray(mean_steps)
+
+    fig, (ax_top, ax_bottom) = plt.subplots(
+        2, 1, figsize=(9.0, 6.0), sharex=True, gridspec_kw={"height_ratios": [1, 1.2]}
+    )
+
+    ax_top.hist(s_vals, bins=60, color="#4C78A8", alpha=0.8)
+    for row in bins[:-1]:
+        ax_top.axvline(row["s_max"], color="#F58518", linestyle="--", linewidth=1.0)
+    ax_top.set_yscale("log")
+    ax_top.set_ylabel("count (res)")
+    ax_top.grid(alpha=0.2, linestyle=":")
+
+    ax_bottom.plot(edges, lower_steps, color="tab:blue", lw=1.5, label="Lower CI", drawstyle="steps-post")
+    ax_bottom.plot(edges, upper_steps, color="tab:red", lw=1.5, label="Upper CI", drawstyle="steps-post")
+    ax_bottom.plot(edges, mean_steps, color="black", lw=1.3, label=r"$\widehat{\eta}(s)$", drawstyle="steps-post")
+    ax_bottom.fill_between(edges, lower_steps, upper_steps, color="tab:blue", alpha=0.12, step="post")
+    ax_bottom.set_xlabel("gini score (s)")
+    ax_bottom.set_ylabel("confidence interval")
+    ax_bottom.grid(alpha=0.2, linestyle=":")
+    ax_bottom.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+
+    fig.suptitle(title, y=0.98)
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) -> None:
     plt.rcParams.update(
         {
@@ -485,6 +538,18 @@ def main() -> None:
         bins=bins,
         output_path=output_dir / "soft_kmeans_cdf_bins_u_vs_s.png",
         title="u-bin centers with s-range",
+    )
+    lower = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 0]
+    upper = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 1]
+    mean_cal = detector.cluster_error_means.squeeze(0).cpu().numpy()
+    _plot_ci_vs_s(
+        s_vals=s_vals,
+        bins=bins,
+        lower=lower,
+        upper=upper,
+        mean_cal=mean_cal,
+        output_path=output_dir / "soft_kmeans_cdf_ci_vs_s.png",
+        title="CI vs s-space (bin boundaries from CDF soft-kmeans)",
     )
 
     stats_path = output_dir / "soft_kmeans_cdf_ci_vs_u.json"
