@@ -13,7 +13,7 @@ postprocessor_args:
   n_clusters: 100
   cov_type: diag
   init_scheme: kmeans
-  n_init: 1
+  n_init: 5
   max_iter: 20000
   clustering_seed: 1
   lr: null
@@ -29,3 +29,8 @@ experience_args:
   transform:
     res: test
     cal: test
+
+postprocessor_grid:
+  n_clusters: [5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]
