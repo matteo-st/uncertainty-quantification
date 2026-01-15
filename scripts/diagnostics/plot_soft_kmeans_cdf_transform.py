@@ -87,13 +87,15 @@ def _plot_score_distribution(
 ) -> None:
     plt.rcParams.update(
         {
-            "font.size": 12,
-            "axes.titlesize": 13,
-            "axes.labelsize": 12,
+            "font.size": 13,
+            "axes.titlesize": 14,
+            "axes.labelsize": 13,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
         }
     )
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
-    ax.hist(scores, bins=60, color="#4C78A8", alpha=0.85)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    ax.hist(scores, bins=80, color="#4C78A8", alpha=0.9)
     ax.set_title("Res gini distribution (log y)")
     ax.set_xlabel("gini score")
     ax.set_ylabel("count")
@@ -108,14 +110,15 @@ def _plot_score_distribution(
             ha="right",
             color="#72B7B2",
         )
+    ax.grid(alpha=0.2, linestyle=":", linewidth=0.7)
     ax.set_yscale("log")
     fig.suptitle(
         f"CDF transform on res (temp={temperature}, mag={magnitude}, normalize={normalize})",
         y=1.02,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=300)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -198,33 +201,37 @@ def main() -> None:
     )
     cdf_vals = _rank_cdf(scores)
     order = np.argsort(scores)
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
-    ax.plot(scores[order], cdf_vals[order], color="#F58518", linewidth=2)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    ax.plot(scores[order], cdf_vals[order], color="#F58518", linewidth=2.5)
     ax.set_title("Empirical CDF (res)")
     ax.set_xlabel("gini score")
     ax.set_ylabel("u = rank(s)/n")
     ax.set_ylim(0, 1)
+    for q in [0.5, 0.9, 0.99]:
+        ax.axvline(np.quantile(scores, q), color="#72B7B2", linestyle="--", linewidth=1)
+    ax.grid(alpha=0.2, linestyle=":", linewidth=0.7)
     fig.suptitle(
         f"CDF transform on res (temp={args.temperature}, mag={args.magnitude}, normalize={args.normalize})",
         y=1.02,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     cdf_path = output_dir / "soft_kmeans_cdf_transform_res_cdf.png"
-    fig.savefig(cdf_path, dpi=300)
+    fig.savefig(cdf_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
-    ax.hist(cdf_vals, bins=20, color="#54A24B", alpha=0.85)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+    ax.hist(cdf_vals, bins=20, color="#54A24B", alpha=0.9)
     ax.set_title("CDF-transformed scores")
     ax.set_xlabel("u")
     ax.set_ylabel("count")
+    ax.grid(alpha=0.2, linestyle=":", linewidth=0.7)
     fig.suptitle(
         f"CDF transform on res (temp={args.temperature}, mag={args.magnitude}, normalize={args.normalize})",
         y=1.02,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     uhist_path = output_dir / "soft_kmeans_cdf_transform_res_u_hist.png"
-    fig.savefig(uhist_path, dpi=300)
+    fig.savefig(uhist_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
     stats = {
