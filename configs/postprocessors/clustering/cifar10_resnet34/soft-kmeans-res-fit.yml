@@ -14,7 +14,7 @@ postprocessor_args:
   cov_type: diag
   init_scheme: kmeans
   n_init: 5
-  max_iter: 20000
+  max_iter: 300
   clustering_seed: 1
   lr: null
   sig: null
