@@ -3,6 +3,7 @@ import os
 import numpy as np
 import joblib
 import torch
+from sklearn.isotonic import IsotonicRegression
 from .base_postprocessor import BasePostprocessor
 from error_estimation.utils.clustering.kmeans import KMeans as TorchKMeans
 from error_estimation.utils.clustering.my_soft_kmeans import SoftKMeans as TorchSoftKMeans
@@ -140,7 +141,7 @@ class PartitionPostprocessor(BasePostprocessor):
             
             )
 
-        elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score"]:
+        elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score", "isotonic-binning"]:
             pass
         else:
             raise ValueError(f"Unsupported method: {self.method}")
@@ -241,6 +242,12 @@ class PartitionPostprocessor(BasePostprocessor):
             # bucketize returns integers in [0, n_clusters-1]
             cluster = torch.bucketize(embs, bin_edges)
             return cluster  # (N,)
+        elif self.method == "isotonic-binning":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
+            bin_edges = self.bin_edges.to(embs.device)
+            cluster = torch.bucketize(embs, bin_edges)
+            return cluster
         elif self.method == "quantile-merge":
             if embs.dim() > 1 and embs.size(1) == 1:
                 embs = embs.squeeze(1)
@@ -314,6 +321,92 @@ class PartitionPostprocessor(BasePostprocessor):
             bin_edges = torch.quantile(all_embs, q)
             self.bin_edges = bin_edges.detach().cpu()  # store on CPU
             clusters = torch.bucketize(all_embs, self.bin_edges.to(all_embs.device))
+            clusters = clusters.to(self.device, dtype=torch.long)
+        elif self.method == "isotonic-binning":
+            embs = all_embs
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
+            if embs.ndim != 1:
+                raise ValueError("isotonic-binning requires 1D embeddings")
+            scores = embs.detach().cpu().numpy().astype(float)
+            labels = detector_labels.detach().cpu().numpy().astype(float)
+            order = np.argsort(scores, kind="mergesort")
+            scores_sorted = scores[order]
+            labels_sorted = labels[order]
+            iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
+            fitted = iso.fit_transform(scores_sorted, labels_sorted)
+
+            segments = []
+            start = 0
+            for i in range(1, len(fitted)):
+                if not np.isclose(fitted[i], fitted[i - 1], rtol=1e-7, atol=1e-12):
+                    segments.append(
+                        {
+                            "start": start,
+                            "end": i - 1,
+                            "count": i - start,
+                            "value": float(fitted[i - 1]),
+                        }
+                    )
+                    start = i
+            segments.append(
+                {
+                    "start": start,
+                    "end": len(fitted) - 1,
+                    "count": len(fitted) - start,
+                    "value": float(fitted[-1]),
+                }
+            )
+
+            def _merge(seg_a, seg_b):
+                total = seg_a["count"] + seg_b["count"]
+                value = (
+                    seg_a["value"] * seg_a["count"] + seg_b["value"] * seg_b["count"]
+                ) / total
+                return {
+                    "start": seg_a["start"],
+                    "end": seg_b["end"],
+                    "count": total,
+                    "value": float(value),
+                }
+
+            n_min = max(int(self.n_min or 1), 1)
+            merged = []
+            current = segments[0]
+            for seg in segments[1:]:
+                if current["count"] < n_min:
+                    current = _merge(current, seg)
+                else:
+                    merged.append(current)
+                    current = seg
+            merged.append(current)
+            if len(merged) > 1 and merged[-1]["count"] < n_min:
+                merged[-2] = _merge(merged[-2], merged[-1])
+                merged.pop()
+
+            target_k = int(self.n_clusters) if self.n_clusters else len(merged)
+            target_k = max(1, target_k)
+            while len(merged) > target_k:
+                diffs = [
+                    abs(merged[i + 1]["value"] - merged[i]["value"])
+                    for i in range(len(merged) - 1)
+                ]
+                idx = int(np.argmin(diffs))
+                merged[idx] = _merge(merged[idx], merged[idx + 1])
+                merged.pop(idx + 1)
+
+            edges = []
+            for i in range(len(merged) - 1):
+                left = scores_sorted[merged[i]["end"]]
+                right = scores_sorted[merged[i + 1]["start"]]
+                if right > left:
+                    edge = (left + right) / 2.0
+                else:
+                    edge = np.nextafter(left, np.inf)
+                edges.append(edge)
+            self.bin_edges = torch.tensor(edges, dtype=embs.dtype, device=self.device)
+            self.n_clusters = len(edges) + 1
+            clusters = torch.bucketize(embs.to(self.device), self.bin_edges)
             clusters = clusters.to(self.device, dtype=torch.long)
         elif self.method == "quantile-merge":
             embs = all_embs.squeeze()

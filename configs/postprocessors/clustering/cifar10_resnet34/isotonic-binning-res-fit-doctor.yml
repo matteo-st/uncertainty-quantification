@@ -1,0 +1,44 @@
+name: partition
+postprocessor_args:
+  alpha: 0.05
+  method: isotonic-binning
+  bound: hoeffding
+  n_classes: 10
+
+  space: gini
+  reorder_embs: False
+  temperature: 1.0
+  magnitude: 0.0
+  normalize: False
+  pred_weights: 0
+  score: upper
+
+  n_clusters: 50
+  n_min: 1
+  init_scheme: None
+  n_init: None
+  max_iter: None
+  clustering_seed: None
+
+experience_args:
+  fit_after_cv: True
+  fit_partition_on_cal: False
+  select_init_on_res: False
+  use_perturbed_logits: True
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag_prefix: doctor-res-grid-nres{n_res}-
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500]
+  n_min: [1, 5, 10, 20]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]

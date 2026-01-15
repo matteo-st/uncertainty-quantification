@@ -39,3 +39,4 @@ This note lists practical resolution functions for a 1D score `s(x)` (doctor, re
 
 ## Notes
 - Any option above must learn `r` on the res split only, then compute CIs on the independent cal split to keep the finite-sample guarantee.
+- Balanced k-means is not generally equivalent to uniform-mass. In 1D with hard equal-size constraints, it effectively yields quantile bins (uniform-mass), but in higher dimensions or with soft constraints it differs.
