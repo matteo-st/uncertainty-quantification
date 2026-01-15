@@ -179,6 +179,120 @@ def _build_ci_dataframe(
     }
 
 
+def _build_bin_summary(
+    *,
+    detector: PartitionPostprocessor,
+    res_logits: torch.Tensor,
+    temperature: float,
+    normalize: bool,
+) -> list[dict[str, float]]:
+    embs = detector._extract_embeddings(logits=res_logits)
+    u_vals = detector._apply_score_transform(embs, fit=False)
+    if u_vals.dim() > 1 and u_vals.size(1) == 1:
+        u_vals = u_vals.squeeze(1)
+    u_vals = u_vals.detach().cpu().numpy()
+
+    s_vals = doctor_gini(res_logits, temperature=temperature, normalize=normalize).detach().cpu().numpy()
+    clusters = detector.predict_clusters(logits=res_logits).squeeze(0).cpu().numpy().astype(int)
+
+    bins = []
+    for k in range(detector.n_clusters):
+        mask = clusters == k
+        if not np.any(mask):
+            continue
+        u_min = float(np.min(u_vals[mask]))
+        u_max = float(np.max(u_vals[mask]))
+        s_min = float(np.min(s_vals[mask]))
+        s_max = float(np.max(s_vals[mask]))
+        bins.append(
+            {
+                "cluster": float(k),
+                "count": float(np.sum(mask)),
+                "u_min": u_min,
+                "u_max": u_max,
+                "u_center": float(0.5 * (u_min + u_max)),
+                "s_min": s_min,
+                "s_max": s_max,
+                "s_width": float(s_max - s_min),
+            }
+        )
+    bins.sort(key=lambda row: row["u_min"])
+    return bins
+
+
+def _plot_bins_on_s(
+    *,
+    s_vals: np.ndarray,
+    bins: list[dict[str, float]],
+    output_path: Path,
+    title: str,
+) -> None:
+    plt.rcParams.update(
+        {
+            "font.size": 12,
+            "axes.titlesize": 13,
+            "axes.labelsize": 12,
+            "xtick.labelsize": 11,
+            "ytick.labelsize": 11,
+        }
+    )
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    ax.hist(s_vals, bins=60, color="#4C78A8", alpha=0.8)
+    boundaries = [row["s_max"] for row in bins[:-1]]
+    for edge in boundaries:
+        ax.axvline(edge, color="#F58518", linestyle="--", linewidth=1.0)
+    ax.set_yscale("log")
+    ax.set_xlabel("gini score (s)")
+    ax.set_ylabel("count (res)")
+    ax.set_title(title)
+    ax.grid(alpha=0.2, linestyle=":")
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_bin_widths(
+    *,
+    bins: list[dict[str, float]],
+    output_path: Path,
+    title: str,
+) -> None:
+    idx = np.arange(1, len(bins) + 1)
+    widths = [row["s_width"] for row in bins]
+    counts = [row["count"] for row in bins]
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    ax.bar(idx, widths, color="#54A24B", alpha=0.85)
+    ax.set_xlabel("Bin index (sorted by u)")
+    ax.set_ylabel("Width in s-space")
+    ax.set_title(title)
+    ax.grid(alpha=0.2, linestyle=":")
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return counts
+
+
+def _plot_u_vs_s_ranges(
+    *,
+    bins: list[dict[str, float]],
+    output_path: Path,
+    title: str,
+) -> None:
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    for row in bins:
+        ax.vlines(row["u_center"], row["s_min"], row["s_max"], color="#4C78A8", alpha=0.8)
+    ax.set_xlabel("u (bin center)")
+    ax.set_ylabel("s-range per bin")
+    ax.set_title(title)
+    ax.grid(alpha=0.2, linestyle=":")
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) -> None:
     plt.rcParams.update(
         {
@@ -349,6 +463,30 @@ def main() -> None:
     )
     _plot_ci_vs_u(data, plot_path, title)
 
+    bins = _build_bin_summary(
+        detector=detector,
+        res_logits=res_logits,
+        temperature=temp,
+        normalize=normalize,
+    )
+    s_vals = doctor_gini(res_logits, temperature=temp, normalize=normalize).detach().cpu().numpy()
+    _plot_bins_on_s(
+        s_vals=s_vals,
+        bins=bins,
+        output_path=output_dir / "soft_kmeans_cdf_bins_on_s.png",
+        title="Soft-kmeans bins mapped back to s-space (res)",
+    )
+    _plot_bin_widths(
+        bins=bins,
+        output_path=output_dir / "soft_kmeans_cdf_bins_s_width.png",
+        title="Bin widths in s-space (sorted by u)",
+    )
+    _plot_u_vs_s_ranges(
+        bins=bins,
+        output_path=output_dir / "soft_kmeans_cdf_bins_u_vs_s.png",
+        title="u-bin centers with s-range",
+    )
+
     stats_path = output_dir / "soft_kmeans_cdf_ci_vs_u.json"
     with stats_path.open("w", encoding="utf-8") as handle:
         json.dump(
@@ -360,6 +498,7 @@ def main() -> None:
                 "temperature": temp,
                 "magnitude": mag,
                 "normalize": normalize,
+                "bins": bins,
             },
             handle,
             indent=2,
