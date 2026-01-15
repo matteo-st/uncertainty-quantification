@@ -508,7 +508,7 @@ class PartitionPostprocessor(BasePostprocessor):
             raise ValueError("raw-score expects 1D embeddings")
         # cluster: (bs,) for one sample or (bs, n) for many
         # cluster = self.predict_clusters(x, logits)
-        cluster = self.predict_clusters(x, logits).squeeze(0)
+        cluster = self.predict_clusters(x, logits).squeeze(0).to(self.device)
         # print("cluster shape in call", cluster.shape)
 
         # (bs, Kmax) of upper bounds
