@@ -190,28 +190,31 @@ def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) ->
         }
     )
     order = np.argsort(data["center"])
-    centers = data["center"][order]
     lower = data["lower"][order]
     upper = data["upper"][order]
     mean_cal = data["mean_cal"][order]
     u_min = data["u_min"][order]
     u_max = data["u_max"][order]
 
+    edges = []
+    lower_steps = []
+    upper_steps = []
+    mean_steps = []
+    for lo, hi, lval, uval, mval in zip(u_min, u_max, lower, upper, mean_cal):
+        edges.extend([lo, hi])
+        lower_steps.extend([lval, lval])
+        upper_steps.extend([uval, uval])
+        mean_steps.extend([mval, mval])
+    edges = np.asarray(edges)
+    lower_steps = np.asarray(lower_steps)
+    upper_steps = np.asarray(upper_steps)
+    mean_steps = np.asarray(mean_steps)
+
     fig, ax = plt.subplots(figsize=(8.5, 5.0))
-    ax.plot(centers, lower, color="tab:blue", lw=1.4, label="Lower CI")
-    ax.plot(centers, upper, color="tab:red", lw=1.4, label="Upper CI")
-    ax.fill_between(centers, lower, upper, color="tab:blue", alpha=0.15)
-    ax.errorbar(
-        centers,
-        mean_cal,
-        xerr=[centers - u_min, u_max - centers],
-        fmt="o",
-        color="black",
-        ecolor="tab:gray",
-        elinewidth=1.0,
-        capsize=2,
-        label=r"$\widehat{\eta}(u)$ (bin width)",
-    )
+    ax.plot(edges, lower_steps, color="tab:blue", lw=1.6, label="Lower CI", drawstyle="steps-post")
+    ax.plot(edges, upper_steps, color="tab:red", lw=1.6, label="Upper CI", drawstyle="steps-post")
+    ax.plot(edges, mean_steps, color="black", lw=1.4, label=r"$\widehat{\\eta}(u)$", drawstyle="steps-post")
+    ax.fill_between(edges, lower_steps, upper_steps, color="tab:blue", alpha=0.12, step="post")
     ax.set_xlabel("Transformed score (u)")
     ax.set_ylabel("Confidence interval")
     ax.set_title(title)
