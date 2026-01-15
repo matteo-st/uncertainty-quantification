@@ -63,7 +63,7 @@ def _coerce_grid_cell(value):
     if isinstance(value, (list, tuple)):
         if len(value) == 1:
             return _coerce_grid_cell(value[0])
-        return value
+        return [_coerce_grid_cell(item) for item in value]
     if hasattr(value, "item") and not isinstance(value, (str, bytes)):
         try:
             return value.item()
