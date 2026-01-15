@@ -73,15 +73,15 @@ def _coerce_grid_cell(value):
             inner = stripped[1:-1].strip()
             if inner:
                 if "np.float" in inner:
-                    inner = re.sub(r"np\\.float\\d+\\(", "(", inner)
+                    inner = re.sub(r"np\\.float\\d+\\(", "", inner).replace(")", "")
                 numbers = _GRID_NUM_RE.findall(inner)
-                if len(numbers) == 1:
+                if numbers:
                     try:
-                        return float(numbers[0])
+                        return [float(num) for num in numbers]
                     except ValueError:
                         return value
         if "np.float64" in stripped:
-            cleaned = re.sub(r"np\\.float\\d+\\(", "(", stripped)
+            cleaned = re.sub(r"np\\.float\\d+\\(", "", stripped).replace(")", "")
             numbers = _GRID_NUM_RE.findall(cleaned)
             if len(numbers) == 1:
                 try:
