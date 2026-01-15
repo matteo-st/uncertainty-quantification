@@ -54,7 +54,7 @@ class PartitionPostprocessor(BasePostprocessor):
         self.reorder_embs = cfg["reorder_embs"]
         self.n_dim = cfg.get("n_dim", None)
         self.temperature = cfg["temperature"]
-        self.normalize_gini = False
+        self.normalize_gini = cfg.get("normalize", False)
         self.pred_weight = cfg["pred_weights"]
         self.reducer = None  # No reducer for now
 

@@ -27,6 +27,7 @@ from error_estimation.utils.helper import make_grid, metric_direction, select_be
 from error_estimation.utils.logging import setup_logging
 from error_estimation.utils.models import get_model
 from error_estimation.utils.metrics import compute_all_metrics
+from error_estimation.utils.postprocessors.doctor_postprocessor import gini as doctor_gini
 from error_estimation.utils.paths import CHECKPOINTS_DIR, DATA_DIR, LATENTS_DIR, RESULTS_DIR
 from error_estimation.utils.postprocessors import get_postprocessor
 from error_estimation.utils.results_io import (
@@ -248,16 +249,25 @@ def _load_latent_values(
     model: torch.nn.Module,
     device: torch.device,
     n_epochs: int | None,
+    perturbation: dict | None = None,
+    use_cache: bool = True,
 ) -> dict[str, torch.Tensor] | None:
     if dataloader is None:
         return None
+    magnitude = None
+    temperature = 1.0
+    normalize = False
+    if perturbation:
+        magnitude = float(perturbation.get("magnitude", 0.0))
+        temperature = float(perturbation.get("temperature", 1.0))
+        normalize = bool(perturbation.get("normalize", False))
     split_indices = _resolve_indices(dataloader.dataset)
     full_dataset = _unwrap_dataset(dataloader.dataset)
     full_len = len(full_dataset)
     n_epochs = 1 if n_epochs is None else n_epochs
 
     cached = None
-    if os.path.exists(latent_path):
+    if use_cache and os.path.exists(latent_path) and magnitude is None:
         pkg = torch.load(latent_path, map_location="cpu")
         all_logits = pkg["logits"].to(torch.float32)
         all_labels = pkg["labels"].to(torch.int64)
@@ -282,33 +292,48 @@ def _load_latent_values(
         all_labels = []
         all_model_preds = []
         model.eval()
-        with torch.no_grad():
-            for inputs, targets in full_loader:
-                inputs = inputs.to(device)
-                logits = model(inputs).cpu()
+        for inputs, targets in full_loader:
+            inputs = inputs.to(device)
+            if magnitude is not None and magnitude > 0:
+                inputs = inputs.detach().requires_grad_(True)
+                logits_clean = model(inputs)
+                model_preds = torch.argmax(logits_clean, dim=1)
+                scores = doctor_gini(logits_clean, temperature=temperature, normalize=normalize)
+                scores_for_loss = scores
+                if torch.any(scores_for_loss <= 0):
+                    scores_for_loss = scores_for_loss.abs()
+                loss = torch.log(scores_for_loss + 1e-12).sum()
+                grad_inputs, = torch.autograd.grad(loss, inputs, retain_graph=False, create_graph=False)
+                with torch.no_grad():
+                    adv = inputs + magnitude * grad_inputs.sign()
+                    logits = model(adv).cpu()
+            else:
+                with torch.no_grad():
+                    logits = model(inputs).cpu()
                 model_preds = torch.argmax(logits, dim=1)
-                all_logits.append(logits)
-                all_labels.append(targets.cpu())
-                all_model_preds.append(model_preds)
+            all_logits.append(logits)
+            all_labels.append(targets.cpu())
+            all_model_preds.append(model_preds.cpu())
 
         all_logits = torch.cat(all_logits, dim=0)
         all_labels = torch.cat(all_labels, dim=0)
         all_model_preds = torch.cat(all_model_preds, dim=0)
 
-        parent = os.path.dirname(latent_path)
-        os.makedirs(parent, exist_ok=True)
-        tmp = latent_path + ".tmp"
-        torch.save(
-            {
-                "logits": all_logits.cpu(),
-                "labels": all_labels.cpu(),
-                "model_preds": all_model_preds.cpu(),
-                "n_samples": full_len,
-                "n_epochs": n_epochs,
-            },
-            tmp,
-        )
-        os.replace(tmp, latent_path)
+        if use_cache and magnitude is None:
+            parent = os.path.dirname(latent_path)
+            os.makedirs(parent, exist_ok=True)
+            tmp = latent_path + ".tmp"
+            torch.save(
+                {
+                    "logits": all_logits.cpu(),
+                    "labels": all_labels.cpu(),
+                    "model_preds": all_model_preds.cpu(),
+                    "n_samples": full_len,
+                    "n_epochs": n_epochs,
+                },
+                tmp,
+            )
+            os.replace(tmp, latent_path)
     else:
         all_logits, all_labels, all_model_preds = cached
 
@@ -379,6 +404,14 @@ def _evaluate_grid(
         exp_args = detection_cfg.get("experience_args", {})
         n_epochs = exp_args.get("n_epochs", {})
         fit_partition_on_cal = exp_args.get("fit_partition_on_cal", False)
+        use_perturbed_logits = exp_args.get("use_perturbed_logits", False)
+        perturbation_cfg = None
+        if use_perturbed_logits:
+            perturbation_cfg = {
+                "magnitude": detection_cfg.get("postprocessor_args", {}).get("magnitude", 0.0),
+                "temperature": detection_cfg.get("postprocessor_args", {}).get("temperature", 1.0),
+                "normalize": detection_cfg.get("postprocessor_args", {}).get("normalize", False),
+            }
         res_values = None
         if data_cfg.get("n_samples", {}).get("res", 0) > 0 and res_loader is not None:
             res_values = _load_latent_values(
@@ -387,6 +420,8 @@ def _evaluate_grid(
                 model=model,
                 device=device,
                 n_epochs=n_epochs.get("res", 1),
+                perturbation=perturbation_cfg,
+                use_cache=not use_perturbed_logits,
             )
         cal_values = _load_latent_values(
             dataloader=cal_loader,
@@ -394,6 +429,8 @@ def _evaluate_grid(
             model=model,
             device=device,
             n_epochs=n_epochs.get("cal", 1),
+            perturbation=perturbation_cfg,
+            use_cache=not use_perturbed_logits,
         )
         if fit_partition_on_cal or res_values is None:
             fit_values = cal_values
@@ -459,29 +496,57 @@ def _evaluate_grid(
                 res_rows.append(row)
             res_results = pd.DataFrame(res_rows)
 
-    cal_eval = AblationDetector(
-        model=model,
-        dataloader=cal_loader,
-        device=device,
-        suffix="cal",
-        latent_path=latent_paths["cal"],
-        postprocessor_name=detection_cfg["name"],
-        cfg_dataset=data_cfg,
-        result_folder=str(run_dir),
-    )
-    cal_results = pd.concat(cal_eval.evaluate(grid, detectors=detectors, suffix="cal"), axis=0)
+    if detection_cfg.get("name") == "partition" and use_perturbed_logits:
+        test_values = _load_latent_values(
+            dataloader=test_loader,
+            latent_path=latent_paths["test"],
+            model=model,
+            device=device,
+            n_epochs=n_epochs.get("test", 1),
+            perturbation=perturbation_cfg,
+            use_cache=False,
+        )
+        cal_rows = []
+        test_rows = []
+        for cfg, detector in zip(grid, detectors):
+            cal_scores = detector(logits=cal_values["logits"]).detach().cpu().numpy()
+            test_scores = detector(logits=test_values["logits"]).detach().cpu().numpy()
+            cal_metrics = compute_all_metrics(
+                conf=cal_scores, detector_labels=cal_values["detector_labels"].cpu().numpy()
+            )
+            test_metrics = compute_all_metrics(
+                conf=test_scores, detector_labels=test_values["detector_labels"].cpu().numpy()
+            )
+            cal_metrics = {f"{key}_cal": val for key, val in cal_metrics.items()}
+            test_metrics = {f"{key}_test": val for key, val in test_metrics.items()}
+            cal_rows.append(pd.concat([pd.DataFrame([cfg]), pd.DataFrame([cal_metrics])], axis=1))
+            test_rows.append(pd.concat([pd.DataFrame([cfg]), pd.DataFrame([test_metrics])], axis=1))
+        cal_results = pd.concat(cal_rows, axis=0)
+        test_results = pd.concat(test_rows, axis=0)
+    else:
+        cal_eval = AblationDetector(
+            model=model,
+            dataloader=cal_loader,
+            device=device,
+            suffix="cal",
+            latent_path=latent_paths["cal"],
+            postprocessor_name=detection_cfg["name"],
+            cfg_dataset=data_cfg,
+            result_folder=str(run_dir),
+        )
+        cal_results = pd.concat(cal_eval.evaluate(grid, detectors=detectors, suffix="cal"), axis=0)
 
-    test_eval = AblationDetector(
-        model=model,
-        dataloader=test_loader,
-        device=device,
-        suffix="test",
-        latent_path=latent_paths["test"],
-        postprocessor_name=detection_cfg["name"],
-        cfg_dataset=data_cfg,
-        result_folder=str(run_dir),
-    )
-    test_results = pd.concat(test_eval.evaluate(grid, detectors=detectors, suffix="test"), axis=0)
+        test_eval = AblationDetector(
+            model=model,
+            dataloader=test_loader,
+            device=device,
+            suffix="test",
+            latent_path=latent_paths["test"],
+            postprocessor_name=detection_cfg["name"],
+            cfg_dataset=data_cfg,
+            result_folder=str(run_dir),
+        )
+        test_results = pd.concat(test_eval.evaluate(grid, detectors=detectors, suffix="test"), axis=0)
 
     if grid_keys:
         grid_results = pd.merge(cal_results, test_results, on=grid_keys, how="outer")

@@ -5,9 +5,10 @@ postprocessor_args:
   bound: bernstein
   n_classes: 10
 
-  space: probits
-  reorder_embs: True
+  space: gini
+  reorder_embs: False
   temperature: 2
+  normalize: False
   pred_weights: 0
 
   n_clusters: 100
@@ -23,6 +24,7 @@ experience_args:
   fit_after_cv: True
   fit_partition_on_cal: False
   select_init_on_res: False
+  use_perturbed_logits: True
   raw_score_selection:
     postprocessor: doctor
     metric: fpr
