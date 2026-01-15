@@ -433,6 +433,74 @@ Related work (monotone calibration and binning):
 | oracle best fpr_test | unif-mass (upper, alpha=0.50) | 500 | 0.5662 | 0.8093 |
 | oracle best roc_auc_test | unif-mass (upper, alpha=0.50) | 10 | 0.6691 | 0.9013 |
 
+### Isotonic-binning res-fit (partition on res, binning on cal) — CIFAR-10, n_res=1000
+Source:
+- `results/cifar10/resnet34_ce/partition/runs/isotonic-binning-grid-nres1000-20260115/`
+
+Experiment definition (precise):
+- Dataset/model: CIFAR-10 / ResNet-34 (preprocessor `ce`), seed split 9.
+- Splits: n_res=1000, n_cal=4000, n_test=5000.
+- Postprocessor: `partition` with `method=isotonic-binning`.
+- Embedding space: gini (doctor params selected on res), `use_perturbed_logits=True`.
+- Grid: `n_clusters` in {5,10,20,30,50,75,100,150,200,300,500}, `n_min` in {1,5,10,20}, `score` in {mean, upper}, `alpha` in {0.05,0.10,0.50} (alpha ignored when score=mean).
+- Fitting protocol: fit the isotonic partition on res only, then compute bin statistics on cal, then evaluate on test.
+
+Selection protocol:
+- K chosen by rule-of-thumb from n_cal=4000: cube-root -> K=20, Rice -> K=30 (nearest grid value).
+- For each method (score/alpha), pick n_min by best fpr_res at the chosen K.
+- Report test metrics from the selected (K, n_min) only.
+
+| rule | method | k | n_min | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| n/a | raw-score (doctor, res-selected) | 1 | n/a | 0.2244 | 0.9351 |
+| cube-root (K=20) | isotonic-binning (mean, alpha=any) | 20 | 20 | 1.0000 | 0.8916 |
+| cube-root (K=20) | isotonic-binning (upper, alpha=0.05) | 20 | 5 | 1.0000 | 0.8926 |
+| cube-root (K=20) | isotonic-binning (upper, alpha=0.10) | 20 | 5 | 1.0000 | 0.8926 |
+| cube-root (K=20) | isotonic-binning (upper, alpha=0.50) | 20 | 5 | 1.0000 | 0.8926 |
+| Rice (K=30) | isotonic-binning (mean, alpha=any) | 30 | 20 | 1.0000 | 0.8916 |
+| Rice (K=30) | isotonic-binning (upper, alpha=0.05) | 30 | 5 | 1.0000 | 0.8926 |
+| Rice (K=30) | isotonic-binning (upper, alpha=0.10) | 30 | 5 | 1.0000 | 0.8926 |
+| Rice (K=30) | isotonic-binning (upper, alpha=0.50) | 30 | 5 | 1.0000 | 0.8926 |
+
+Oracle best test per method (diagnostic only; selection uses test):
+
+| select | method | k | n_min | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| oracle best fpr_test | isotonic-binning (mean, alpha=any) | 10 | 1 | 0.9992 | 0.8748 |
+| oracle best roc_auc_test | isotonic-binning (mean, alpha=any) | 5 | 20 | 1.0000 | 0.8916 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.05) | 10 | 1 | 1.0000 | 0.8926 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.05) | 10 | 1 | 1.0000 | 0.8926 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.10) | 10 | 1 | 1.0000 | 0.8926 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.10) | 10 | 1 | 1.0000 | 0.8926 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.50) | 10 | 1 | 1.0000 | 0.8926 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.50) | 10 | 1 | 1.0000 | 0.8926 |
+
+#### n_res=3000 (n_cal=2000, K_cube=12.6, K_Rice=25.2)
+| rule | method | k | n_min | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| n/a | raw-score (doctor, res-selected) | 1 | n/a | 0.2399 | 0.9169 |
+| cube-root (K=12.6) | isotonic-binning (mean, alpha=any) | 10 | 10 | 0.6873 | 0.8963 |
+| cube-root (K=12.6) | isotonic-binning (upper, alpha=0.05) | 10 | 20 | 0.4183 | 0.9077 |
+| cube-root (K=12.6) | isotonic-binning (upper, alpha=0.10) | 10 | 20 | 0.4183 | 0.9077 |
+| cube-root (K=12.6) | isotonic-binning (upper, alpha=0.50) | 10 | 20 | 0.4183 | 0.9095 |
+| Rice (K=25.2) | isotonic-binning (mean, alpha=any) | 30 | 5 | 0.4183 | 0.9035 |
+| Rice (K=25.2) | isotonic-binning (upper, alpha=0.05) | 30 | 10 | 0.4183 | 0.9077 |
+| Rice (K=25.2) | isotonic-binning (upper, alpha=0.10) | 30 | 10 | 0.4183 | 0.9077 |
+| Rice (K=25.2) | isotonic-binning (upper, alpha=0.50) | 30 | 10 | 0.4183 | 0.9096 |
+
+Oracle best test per method (diagnostic only; selection uses test):
+
+| select | method | k | n_min | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| oracle best fpr_test | isotonic-binning (mean, alpha=any) | 20 | 1 | 0.4181 | 0.9037 |
+| oracle best roc_auc_test | isotonic-binning (mean, alpha=any) | 20 | 1 | 0.4181 | 0.9037 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.05) | 20 | 1 | 0.4183 | 0.9078 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.05) | 20 | 1 | 0.4183 | 0.9078 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.10) | 20 | 1 | 0.4183 | 0.9078 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.10) | 20 | 1 | 0.4183 | 0.9078 |
+| oracle best fpr_test | isotonic-binning (upper, alpha=0.50) | 20 | 5 | 0.4183 | 0.9097 |
+| oracle best roc_auc_test | isotonic-binning (upper, alpha=0.50) | 20 | 5 | 0.4183 | 0.9097 |
+
 ### Soft-kmeans res-fit with init selection (partition on res, binning on cal) — CIFAR-10, n_res=500
 Source:
 - `results/partition_binning/cifar10/resnet34_ce/partition/runs/soft-kmeans-grid-nres500-fpr-20260115f/`
@@ -567,3 +635,76 @@ Best mean test performance per method (mean ± std over inits for each K):
 | best mean roc_auc_test | soft-kmeans-doctor (score=upper, alpha=0.1) | 200 | 1.0000 ± 0.0000 | 0.9060 ± 0.0006 |
 | best mean fpr_test | soft-kmeans-doctor (score=upper, alpha=0.5) | 200 | 1.0000 ± 0.0000 | 0.9066 ± 0.0011 |
 | best mean roc_auc_test | soft-kmeans-doctor (score=upper, alpha=0.5) | 200 | 1.0000 ± 0.0000 | 0.9066 ± 0.0011 |
+
+### Soft-kmeans with doctor res-selection + CDF score transform (fit on res, binning on cal) — CIFAR-10, n_res=1000
+Source:
+- `results/partition_binning/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/`
+
+Doctor hyperparameters (temperature, magnitude, normalize) are selected on res from `doctor-res-grid-nres1000-20260114c` and applied to the gini score.  
+Before soft-kmeans, gini scores are mapped through the empirical CDF fit on res (monotone map to [0,1]); the same transform is applied to cal/test.  
+K chosen by rule-of-thumb from n_cal=4000 (cube-root -> K=20, Rice -> K=30).  
+Init is selected by res metric (`fpr_res`, `roc_auc_res`, or `inertia_res`); report test metrics only.
+
+CDF transform definition (res split size $n$):
+Let $s \\in [s_{\\min}, s_{\\max}]$ be the 1D score (gini). The empirical CDF is
+$\\hat F(s)=\\frac{1}{n}\\sum_{i=1}^n \\mathbf{1}\\{s_i \\le s\\}$ with codomain $[0,1]$.
+We use the rank-based variant to avoid 0/1:
+$u_i = \\frac{\\mathrm{rank}(s_i) - 0.5}{n} \\in (0,1)$.
+The transformed score is $t_i = u_i$ (monotone). This spreads dense regions and compresses tails, which helps soft-kmeans avoid a single dominant cluster, but it can still fail when the res distribution is highly concentrated or when cal/test shift relative to res.
+
+Visualization (res split, seed 9; perturbed logits with magnitude=0.002; temperature=0.9, normalize=true):
+`results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res.png`
+
+| rule | init_select | method | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| n/a | n/a | raw-score (doctor, res-selected) | 1 | 0.2244 | 0.9351 |
+| cube-root (K=20) | fpr_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2559 | 0.9219 |
+| cube-root (K=20) | roc_auc_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2559 | 0.9219 |
+| cube-root (K=20) | inertia_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2640 | 0.9239 |
+| Rice (K=30) | fpr_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.2728 | 0.9283 |
+| Rice (K=30) | roc_auc_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.2324 | 0.9235 |
+| Rice (K=30) | inertia_res | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.2728 | 0.9283 |
+| cube-root (K=20) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.5635 | 0.9040 |
+| cube-root (K=20) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.5635 | 0.9040 |
+| cube-root (K=20) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.5522 | 0.8997 |
+| Rice (K=30) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.5017 | 0.9001 |
+| Rice (K=30) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.7689 | 0.8825 |
+| Rice (K=30) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.5017 | 0.9001 |
+| cube-root (K=20) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.5522 | 0.9042 |
+| cube-root (K=20) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.5151 | 0.9056 |
+| cube-root (K=20) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.5522 | 0.9042 |
+| Rice (K=30) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.4396 | 0.9078 |
+| Rice (K=30) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.6641 | 0.8922 |
+| Rice (K=30) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.4396 | 0.9078 |
+| cube-root (K=20) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.4985 | 0.9126 |
+| cube-root (K=20) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.3875 | 0.9188 |
+| cube-root (K=20) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.4531 | 0.9120 |
+| Rice (K=30) | fpr_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.3248 | 0.9182 |
+| Rice (K=30) | roc_auc_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.4684 | 0.9038 |
+| Rice (K=30) | inertia_res | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.3248 | 0.9182 |
+
+Oracle best test per method (diagnostic only; selection uses test):
+
+| select | method | k | init | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| best fpr_test | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 50 | 5 | 0.2253 | 0.9232 |
+| best roc_auc_test | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 4 | 0.2728 | 0.9283 |
+| best fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 5 | 3 | 0.2471 | 0.8940 |
+| best roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 10 | 1 | 0.3093 | 0.9121 |
+| best fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 5 | 3 | 0.2471 | 0.8940 |
+| best roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 10 | 3 | 0.3060 | 0.9181 |
+| best fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 5 | 3 | 0.2471 | 0.8940 |
+| best roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 5 | 0.3875 | 0.9188 |
+
+Best mean test performance per method (mean ± std over inits for each K):
+
+| select | method | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| best mean fpr_test | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 5 | 0.2474 ± 0.0003 | 0.9079 ± 0.0001 |
+| best mean roc_auc_test | soft-kmeans-doctor-cdf (score=mean, alpha=any) | 10 | 0.2877 ± 0.0078 | 0.9241 ± 0.0003 |
+| best mean fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 5 | 0.2474 ± 0.0003 | 0.8940 ± 0.0001 |
+| best mean roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.05) | 10 | 0.3585 ± 0.0253 | 0.9085 ± 0.0021 |
+| best mean fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 5 | 0.2474 ± 0.0003 | 0.8940 ± 0.0001 |
+| best mean roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.1) | 10 | 0.3159 ± 0.0069 | 0.9153 ± 0.0019 |
+| best mean fpr_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 5 | 0.2474 ± 0.0003 | 0.8940 ± 0.0001 |
+| best mean roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 10 | 0.3159 ± 0.0069 | 0.9174 ± 0.0006 |
