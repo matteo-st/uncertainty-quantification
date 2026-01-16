@@ -66,7 +66,7 @@ def prepare_ablation_dataloaders(
 
     perm = list(range(n))
     if seed_split is not None:
-        # Use a generator for local reproducibility of the shuffle
+        random.seed(seed_split)
         random.shuffle(perm)
 
 

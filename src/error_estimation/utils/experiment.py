@@ -56,7 +56,7 @@ def write_run_metadata(
     return metadata_path
 
 
-def build_latent_paths(latent_dir: str, data_cfg: dict, model_cfg: dict, detection_cfg: dict) -> dict[str, str]:
+def build_latent_paths(latent_dir: str, data_cfg: dict, model_cfg: dict, detection_cfg: dict, logits_dtype: str = "float32") -> dict[str, str]:
     root_parts = [data_cfg["name"], model_cfg["model_name"]]
     preprocessor = model_cfg.get("preprocessor")
     if preprocessor:
@@ -73,7 +73,8 @@ def build_latent_paths(latent_dir: str, data_cfg: dict, model_cfg: dict, detecti
     def _path(transform: str | None, n_epochs: int | None) -> str:
         transform_tag = _normalize_transform(transform)
         epochs_tag = _normalize_epochs(n_epochs)
-        return str(latent_root / f"transform-{transform_tag}_n-epochs-{epochs_tag}" / "full.pt")
+        dtype_suffix = "" if logits_dtype == "float32" else f"_{logits_dtype}"
+        return str(latent_root / f"transform-{transform_tag}_n-epochs-{epochs_tag}" / f"full{dtype_suffix}.pt")
 
     exp_args = detection_cfg.get("experience_args", {})
     transforms = exp_args.get("transform", {})

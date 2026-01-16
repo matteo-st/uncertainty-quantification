@@ -31,15 +31,15 @@ from error_estimation.utils.postprocessors import get_postprocessor
 
 class EvaluatorAblation:
     def __init__(
-            self, 
-            model=None, 
+            self,
+            model=None,
             cfg_detection=None,
             cfg_dataset=None,
-            cal_loader=None,    
+            cal_loader=None,
             res_loader=None,
             test_loader=None,
             device=None,
-            metric='fpr', 
+            metric='fpr',
             quantizer_metric="same",
             result_folder="results/",
             latent_paths="latent/train_latent.pt",
@@ -51,6 +51,7 @@ class EvaluatorAblation:
             mode="search",
             save_search_results: bool = False,
             save_run_results: bool = False,
+            logits_dtype: str = "float32",
             ):
 
         """
@@ -83,10 +84,12 @@ class EvaluatorAblation:
         self.res_loader = res_loader
         self.val_loader = test_loader
         self.latent_paths = latent_paths
+        self.logits_dtype = logits_dtype
 
         self.evaluator_cal = AblationDetector(
             self.model, self.cal_loader, device=self.device, suffix="cal", latent_path=self.latent_paths["cal"],
-            cfg_dataset=self.cfg_dataset, postprocessor_name=self.postprocessor_name
+            cfg_dataset=self.cfg_dataset, postprocessor_name=self.postprocessor_name,
+            logits_dtype=self.logits_dtype
         )
         self.evaluator_res = None
         if self.res_loader is not None:
@@ -98,13 +101,14 @@ class EvaluatorAblation:
                 latent_path=self.latent_paths["res"],
                 cfg_dataset=self.cfg_dataset,
                 postprocessor_name=self.postprocessor_name,
+                logits_dtype=self.logits_dtype,
             )
 
 
         self.evaluator_test = AblationDetector(
             self.model, self.val_loader, device=self.device, suffix="test", latent_path=self.latent_paths["test"],
             cfg_dataset=self.cfg_dataset, postprocessor_name=self.postprocessor_name,
-            result_folder=self.result_folder
+            result_folder=self.result_folder, logits_dtype=self.logits_dtype
         )
 
         self.detector = None

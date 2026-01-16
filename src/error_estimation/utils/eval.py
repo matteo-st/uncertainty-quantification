@@ -448,6 +448,12 @@ def risks_coverages_selective_net(scores, pred, targets, sort=True):
 #         return list_results
 
 class AblationDetector:
+    DTYPE_MAP = {
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "float64": torch.float64,
+    }
+
     def __init__(
         self,
         model: torch.nn.Module,
@@ -458,6 +464,7 @@ class AblationDetector:
         postprocessor_name="clustering",
         cfg_dataset=None,
         result_folder=None,
+        logits_dtype: str = "float32",
 
     ):
         """
@@ -469,17 +476,22 @@ class AblationDetector:
             device:               torch.device to run model & detectors on.
             magnitude:            If >0, craft a one‐step adversarial example
                                   against each detector as in your original.
+            logits_dtype:         Precision for logits computation ("float16", "float32", "float64").
         """
         self.model = model
         self.loader = dataloader
         self.device = device
         self.suffix = suffix
         self.postprocessor_name = postprocessor_name
-        
+
         self.cfg_dataset = cfg_dataset
         self.num_classes = cfg_dataset["num_classes"]
-        
-    
+
+        if logits_dtype not in self.DTYPE_MAP:
+            raise ValueError(f"logits_dtype must be one of {list(self.DTYPE_MAP.keys())}, got {logits_dtype}")
+        self.logits_dtype = logits_dtype
+        self.torch_dtype = self.DTYPE_MAP[logits_dtype]
+
         self.scores = None  # Precomputed scores, if any
         self.latent_path = latent_path
         self.result_folder = result_folder
@@ -540,7 +552,7 @@ class AblationDetector:
         if os.path.exists(self.latent_path):
 
             pkg = torch.load(self.latent_path, map_location="cpu")
-            logits = pkg["logits"].to(torch.float32).to(self.device)        # (N, C)
+            logits = pkg["logits"].to(self.torch_dtype).to(self.device)        # (N, C)
             all_labels = pkg["labels"].numpy()                  # (N,)
             all_model_preds  = pkg["model_preds"].numpy()             # (N,)
             detector_labels_arr = (all_model_preds != all_labels)  # bool array
@@ -632,7 +644,7 @@ class AblationDetector:
                     if isinstance(scores, torch.Tensor):
                         scores = scores.cpu().numpy()
                     all_scores[i][idx: idx+bs] = scores
-                    
+
                 idx += bs
 
             # AFTER (robust)
@@ -643,7 +655,7 @@ class AblationDetector:
                 tmp = self.latent_path + ".tmp"
                 torch.save(
                     {
-                        "logits": torch.tensor(all_logits),     # compact on disk
+                        "logits": torch.tensor(all_logits).to(self.torch_dtype),  # save with specified precision
                         "labels": torch.tensor(all_labels).to(torch.int64),
                         "model_preds": torch.tensor(all_model_preds).to(torch.int64),
                     },

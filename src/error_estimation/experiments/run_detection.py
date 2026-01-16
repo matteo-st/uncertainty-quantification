@@ -57,6 +57,12 @@ METRIC_KEYS = [
     "thr",
 ]
 
+DTYPE_MAP = {
+    "float16": torch.float16,
+    "float32": torch.float32,
+    "float64": torch.float64,
+}
+
 _GRID_NUM_RE = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
 
@@ -251,9 +257,11 @@ def _load_latent_values(
     n_epochs: int | None,
     perturbation: dict | None = None,
     use_cache: bool = True,
+    logits_dtype: str = "float32",
 ) -> dict[str, torch.Tensor] | None:
     if dataloader is None:
         return None
+    torch_dtype = DTYPE_MAP.get(logits_dtype, torch.float32)
     magnitude = None
     temperature = 1.0
     normalize = False
@@ -269,7 +277,7 @@ def _load_latent_values(
     cached = None
     if use_cache and os.path.exists(latent_path) and magnitude is None:
         pkg = torch.load(latent_path, map_location="cpu")
-        all_logits = pkg["logits"].to(torch.float32)
+        all_logits = pkg["logits"].to(torch_dtype)
         all_labels = pkg["labels"].to(torch.int64)
         all_model_preds = pkg["model_preds"].to(torch.int64)
         expected_len = full_len * n_epochs
@@ -378,6 +386,7 @@ def _evaluate_grid(
     device: torch.device,
     latent_paths: dict[str, str],
     select_init_metric: str | None,
+    logits_dtype: str = "float32",
 ) -> None:
     if "postprocessor_grid" not in detection_cfg:
         raise KeyError("Missing detection.postprocessor_grid for --eval-grid")
@@ -422,6 +431,7 @@ def _evaluate_grid(
                 n_epochs=n_epochs.get("res", 1),
                 perturbation=perturbation_cfg,
                 use_cache=not use_perturbed_logits,
+                logits_dtype=logits_dtype,
             )
         cal_values = _load_latent_values(
             dataloader=cal_loader,
@@ -431,6 +441,7 @@ def _evaluate_grid(
             n_epochs=n_epochs.get("cal", 1),
             perturbation=perturbation_cfg,
             use_cache=not use_perturbed_logits,
+            logits_dtype=logits_dtype,
         )
         if fit_partition_on_cal or res_values is None:
             fit_values = cal_values
@@ -505,6 +516,7 @@ def _evaluate_grid(
             n_epochs=n_epochs.get("test", 1),
             perturbation=perturbation_cfg,
             use_cache=False,
+            logits_dtype=logits_dtype,
         )
         cal_rows = []
         test_rows = []
@@ -533,6 +545,7 @@ def _evaluate_grid(
             postprocessor_name=detection_cfg["name"],
             cfg_dataset=data_cfg,
             result_folder=str(run_dir),
+            logits_dtype=logits_dtype,
         )
         cal_results = pd.concat(cal_eval.evaluate(grid, detectors=detectors, suffix="cal"), axis=0)
 
@@ -545,6 +558,7 @@ def _evaluate_grid(
             postprocessor_name=detection_cfg["name"],
             cfg_dataset=data_cfg,
             result_folder=str(run_dir),
+            logits_dtype=logits_dtype,
         )
         test_results = pd.concat(test_eval.evaluate(grid, detectors=detectors, suffix="test"), axis=0)
 
@@ -692,6 +706,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--mlflow-run-name", default=None, help="MLflow run name override")
     parser.add_argument("--no-mlflow", action="store_true", help="Disable MLflow logging")
+    parser.add_argument(
+        "--logits-dtype",
+        "--logits_dtype",
+        dest="logits_dtype",
+        choices=["float16", "float32", "float64"],
+        default="float32",
+        help="Precision for logits storage and computation (default: float32)",
+    )
     return parser
 
 
@@ -802,7 +824,7 @@ def run(args: argparse.Namespace) -> None:
                 model_name=model_cfg["model_name"],
             )
 
-            latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg)
+            latent_paths = build_latent_paths(args.latent_dir, data_cfg, model_cfg, detection_cfg, logits_dtype=args.logits_dtype)
             run_dir = run_root / f"seed-split-{seed_split}"
             ensure_dir(run_dir)
 
@@ -836,6 +858,7 @@ def run(args: argparse.Namespace) -> None:
                         device=device,
                         latent_paths=latent_paths,
                         select_init_metric=args.metric,
+                        logits_dtype=args.logits_dtype,
                     )
                     grid_path = run_dir / "grid_results.csv"
                     if not grid_path.exists():
@@ -882,6 +905,7 @@ def run(args: argparse.Namespace) -> None:
                     mode=args.mode,
                     save_search_results=args.save_search_results,
                     verbose=False,
+                    logits_dtype=args.logits_dtype,
                 )
                 evaluator.run()
 
