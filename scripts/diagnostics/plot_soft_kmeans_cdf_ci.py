@@ -556,7 +556,7 @@ def main() -> None:
         output_path=output_dir / "soft_kmeans_cdf_ci_vs_s.png",
         title="CI vs s-space (bin boundaries from CDF soft-kmeans)",
     )
-    for q in (0.9, 0.95, 0.99):
+    for q in (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99):
         zoom_max = float(np.quantile(s_vals, q))
         _plot_ci_vs_s(
             s_vals=s_vals,
