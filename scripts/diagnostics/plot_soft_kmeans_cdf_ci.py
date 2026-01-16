@@ -361,7 +361,15 @@ def _plot_ci_vs_s(
     plt.close(fig)
 
 
-def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) -> None:
+def _plot_ci_vs_u(
+    *,
+    bins: list[dict[str, float]],
+    lower: np.ndarray,
+    upper: np.ndarray,
+    mean_cal: np.ndarray,
+    output_path: Path,
+    title: str,
+) -> None:
     plt.rcParams.update(
         {
             "font.size": 12,
@@ -371,37 +379,55 @@ def _plot_ci_vs_u(data: dict[str, np.ndarray], output_path: Path, title: str) ->
             "ytick.labelsize": 11,
         }
     )
-    order = np.argsort(data["center"])
-    lower = data["lower"][order]
-    upper = data["upper"][order]
-    mean_cal = data["mean_cal"][order]
-    u_min = data["u_min"][order]
-    u_max = data["u_max"][order]
+    bins_sorted = sorted(bins, key=lambda row: row["u_min"])
 
     edges = []
     lower_steps = []
     upper_steps = []
     mean_steps = []
-    for lo, hi, lval, uval, mval in zip(u_min, u_max, lower, upper, mean_cal):
-        edges.extend([lo, hi])
-        lower_steps.extend([lval, lval])
-        upper_steps.extend([uval, uval])
-        mean_steps.extend([mval, mval])
+    for row in bins_sorted:
+        idx = int(row["cluster"])
+        edges.extend([row["u_min"], row["u_max"]])
+        lower_steps.extend([lower[idx], lower[idx]])
+        upper_steps.extend([upper[idx], upper[idx]])
+        mean_steps.extend([mean_cal[idx], mean_cal[idx]])
+
     edges = np.asarray(edges)
     lower_steps = np.asarray(lower_steps)
     upper_steps = np.asarray(upper_steps)
     mean_steps = np.asarray(mean_steps)
 
-    fig, ax = plt.subplots(figsize=(8.5, 5.0))
-    ax.plot(edges, lower_steps, color="tab:blue", lw=1.6, label="Lower CI", drawstyle="steps-post")
-    ax.plot(edges, upper_steps, color="tab:red", lw=1.6, label="Upper CI", drawstyle="steps-post")
-    ax.plot(edges, mean_steps, color="black", lw=1.4, label=r"$\widehat{\eta}(u)$", drawstyle="steps-post")
-    ax.fill_between(edges, lower_steps, upper_steps, color="tab:blue", alpha=0.12, step="post")
-    ax.set_xlabel("Transformed score (u)")
-    ax.set_ylabel("Confidence interval")
-    ax.set_title(title)
-    ax.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
-    ax.grid(alpha=0.2, linestyle=":")
+    fig, (ax_top, ax_bottom) = plt.subplots(
+        2, 1, figsize=(9.0, 6.0), sharex=True, gridspec_kw={"height_ratios": [1, 1.2]}
+    )
+
+    bin_left = [row["u_min"] for row in bins_sorted]
+    bin_width = [row["u_max"] - row["u_min"] for row in bins_sorted]
+    bin_counts = [row["count"] for row in bins_sorted]
+    ax_top.bar(
+        bin_left,
+        bin_counts,
+        width=bin_width,
+        align="edge",
+        color="#4C78A8",
+        alpha=0.8,
+        edgecolor="#F58518",
+        linewidth=0.8,
+    )
+    ax_top.set_yscale("log")
+    ax_top.set_ylabel("count per bin (res)")
+    ax_top.grid(alpha=0.2, linestyle=":")
+
+    ax_bottom.plot(edges, lower_steps, color="tab:blue", lw=1.6, label="Lower CI", drawstyle="steps-post")
+    ax_bottom.plot(edges, upper_steps, color="tab:red", lw=1.6, label="Upper CI", drawstyle="steps-post")
+    ax_bottom.plot(edges, mean_steps, color="black", lw=1.4, label=r"$\widehat{\eta}(u)$", drawstyle="steps-post")
+    ax_bottom.fill_between(edges, lower_steps, upper_steps, color="tab:blue", alpha=0.12, step="post")
+    ax_bottom.set_xlabel("Transformed score (u)")
+    ax_bottom.set_ylabel("Confidence interval")
+    ax_bottom.grid(alpha=0.2, linestyle=":")
+    ax_bottom.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+
+    fig.suptitle(title, y=0.98)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, bbox_inches="tight", dpi=300)
@@ -518,10 +544,11 @@ def main() -> None:
     detector.clustering_algo.best_init = int(best_init)
     detector.fit(logits=cal_logits, detector_labels=cal_labels, fit_clustering=False)
 
-    data = _build_ci_dataframe(
+    bins = _build_bin_summary(
         detector=detector,
-        cal_logits=cal_logits,
-        cal_labels=cal_labels,
+        res_logits=res_logits,
+        temperature=temp,
+        normalize=normalize,
     )
     output_dir = Path(args.output_dir)
     plot_path = output_dir / "soft_kmeans_cdf_ci_vs_u.png"
@@ -529,13 +556,16 @@ def main() -> None:
         f"CI vs transformed score (K={args.n_clusters}, score={args.score}, "
         f"alpha={args.alpha}, init={args.init_metric})"
     )
-    _plot_ci_vs_u(data, plot_path, title)
-
-    bins = _build_bin_summary(
-        detector=detector,
-        res_logits=res_logits,
-        temperature=temp,
-        normalize=normalize,
+    lower = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 0]
+    upper = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 1]
+    mean_cal = detector.cluster_error_means.squeeze(0).cpu().numpy()
+    _plot_ci_vs_u(
+        bins=bins,
+        lower=lower,
+        upper=upper,
+        mean_cal=mean_cal,
+        output_path=plot_path,
+        title=title,
     )
     s_vals = doctor_gini(res_logits, temperature=temp, normalize=normalize).detach().cpu().numpy()
     _plot_bins_on_s(
@@ -554,9 +584,6 @@ def main() -> None:
         output_path=output_dir / "soft_kmeans_cdf_bins_u_vs_s.png",
         title="u-bin centers with s-range",
     )
-    lower = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 0]
-    upper = detector.cluster_intervals.squeeze(0).cpu().numpy()[:, 1]
-    mean_cal = detector.cluster_error_means.squeeze(0).cpu().numpy()
     _plot_ci_vs_s(
         s_vals=s_vals,
         bins=bins,
