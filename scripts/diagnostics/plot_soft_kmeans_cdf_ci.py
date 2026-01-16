@@ -556,17 +556,18 @@ def main() -> None:
         output_path=output_dir / "soft_kmeans_cdf_ci_vs_s.png",
         title="CI vs s-space (bin boundaries from CDF soft-kmeans)",
     )
-    zoom_max = float(np.quantile(s_vals, 0.9))
-    _plot_ci_vs_s(
-        s_vals=s_vals,
-        bins=bins,
-        lower=lower,
-        upper=upper,
-        mean_cal=mean_cal,
-        output_path=output_dir / "soft_kmeans_cdf_ci_vs_s_zoom.png",
-        title="CI vs s-space (zoomed near 0; q90)",
-        xlim=(float(np.min(s_vals)), zoom_max),
-    )
+    for q in (0.9, 0.95, 0.99):
+        zoom_max = float(np.quantile(s_vals, q))
+        _plot_ci_vs_s(
+            s_vals=s_vals,
+            bins=bins,
+            lower=lower,
+            upper=upper,
+            mean_cal=mean_cal,
+            output_path=output_dir / f"soft_kmeans_cdf_ci_vs_s_zoom_q{int(q*100)}.png",
+            title=f"CI vs s-space (zoom near 0; q{int(q*100)})",
+            xlim=(float(np.min(s_vals)), zoom_max),
+        )
 
     stats_path = output_dir / "soft_kmeans_cdf_ci_vs_u.json"
     with stats_path.open("w", encoding="utf-8") as handle:
