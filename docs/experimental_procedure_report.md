@@ -657,6 +657,28 @@ Visualization (res split, seed 9; perturbed logits with magnitude=0.002; tempera
 `results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res_cdf.png`  
 `results/cifar10/resnet34_ce/partition/runs/soft-kmeans-cdf-grid-nres1000-20260115/seed-split-9/analysis/soft_kmeans_cdf_transform_res_u_hist.png`
 
+### K-means with doctor res-selection + CDF score transform (fit on res, binning on cal) — CIFAR-10, n_res=1000
+
+- `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/` (grid and per-K stats under `seed-split-9/`).
+- Same CDF preprocessing: doctor selects the gini temperature/magnitude on res, the scores are transformed to $u\in(0,1)$, then k-means defines the partition on cal.
+- Helper script: `scripts/run_kmeans_cdf.sh`.
+
+Selection table (criterion → method + K → test metrics):
+
+| criterion | method | K | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| best `fpr_res` | kmeans (score=mean) | 50 | 0.29799 | 0.92128 |
+| best `roc_auc_res` | kmeans (score=upper, α=0.1) | 50 | 0.51655 | 0.90808 |
+
+Best grid-wide test performance:
+
+| metric | method | K | value |
+|---|---|---|---|
+| min `fpr_test` | kmeans (score=mean) | 20 | 0.23680 |
+| max `roc_auc_test` | kmeans (score=upper) | 20 | 0.92866 |
+
+Even with the CDF stretch softening the head of the gini distribution, k-means still produces hard cluster assignments, so FPR cannot get as low as with soft-kmeans. The new section makes it easier to compare the two quantizers while keeping the rest of the report focused on the doctor res-selection + CDF pipeline.
+
 | rule | init_select | method | k | fpr_test | roc_auc_test |
 |---|---|---|---|---|---|
 | n/a | n/a | raw-score (doctor, res-selected) | 1 | 0.2244 | 0.9351 |
