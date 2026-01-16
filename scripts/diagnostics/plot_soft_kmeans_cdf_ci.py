@@ -324,11 +324,21 @@ def _plot_ci_vs_s(
         2, 1, figsize=(9.0, 6.0), sharex=True, gridspec_kw={"height_ratios": [1, 1.2]}
     )
 
-    ax_top.hist(s_vals, bins=60, color="#4C78A8", alpha=0.8)
-    for row in bins[:-1]:
-        ax_top.axvline(row["s_max"], color="#F58518", linestyle="--", linewidth=1.0)
+    bin_left = [row["s_min"] for row in bins]
+    bin_width = [row["s_max"] - row["s_min"] for row in bins]
+    bin_counts = [row["count"] for row in bins]
+    ax_top.bar(
+        bin_left,
+        bin_counts,
+        width=bin_width,
+        align="edge",
+        color="#4C78A8",
+        alpha=0.8,
+        edgecolor="#F58518",
+        linewidth=0.8,
+    )
     ax_top.set_yscale("log")
-    ax_top.set_ylabel("count (res)")
+    ax_top.set_ylabel("count per bin (res)")
     ax_top.grid(alpha=0.2, linestyle=":")
     if xlim is not None:
         ax_top.set_xlim(xlim)
