@@ -51,6 +51,17 @@ Quantify how uniform-mass binning behaves when only a calibration split is avail
 ![CIFAR-100: ROC-AUC vs K (cal-only)](partition_binning_assets/unif_mass_calonly_alpha_cifar100_roc_auc.png)
 ![CIFAR-100: FPR@95 vs K (cal-only)](partition_binning_assets/unif_mass_calonly_alpha_cifar100_fpr.png)
 
+## CDF K-means vs Soft-kmeans (n_res=1000)
+Curves use the seed-9 grid runs with CDF-transformed gini scores (doctor res-selected). Each curve is the mean over the 5 random inits for a given K. The raw-score line is the res-selected doctor baseline (same configuration used for the CDF runs).
+
+### CIFAR-10 / ResNet-34 (CDF k-means)
+![CIFAR-10: ROC-AUC vs K (k-means + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_kmeans_roc_auc.png)
+![CIFAR-10: FPR@95 vs K (k-means + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_kmeans_fpr.png)
+
+### CIFAR-10 / ResNet-34 (CDF soft-kmeans)
+![CIFAR-10: ROC-AUC vs K (soft-kmeans + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_softkmeans_roc_auc.png)
+![CIFAR-10: FPR@95 vs K (soft-kmeans + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_softkmeans_fpr.png)
+
 ## Best-K diagnostics (seed 9)
 Best ROC-AUC on test (upper, alpha=0.05) occurs at K=20 for both datasets. The plots below show the bin-level confidence intervals and empirical means for that K using the seed-9 split (the last seed saved by the sweep).
 
