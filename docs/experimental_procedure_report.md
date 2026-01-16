@@ -712,21 +712,64 @@ Best mean test performance per method (mean ± std over inits for each K):
 | best mean roc_auc_test | soft-kmeans-doctor-cdf (score=upper, alpha=0.5) | 10 | 0.3159 ± 0.0069 | 0.9174 ± 0.0006 |
 
 ### K-means with doctor res-selection + CDF score transform (fit on res, binning on cal) — CIFAR-10, n_res=1000
+Source:
+- `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/`
 
-- `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/` (grid and per-K stats under `seed-split-9/`).
-- Same CDF preprocessing: doctor selects the gini temperature/magnitude on res, the scores are transformed to $u\in(0,1)$, then k-means defines the partition on cal.
-- Helper script: `scripts/run_kmeans_cdf.sh`.
+Doctor hyperparameters (temperature, magnitude, normalize) are selected on res from `doctor-res-grid-nres1000-20260114c` and applied to the gini score.  
+Before k-means, gini scores are mapped through the empirical CDF fit on res (monotone map to [0,1]); the same transform is applied to cal/test.  
+K chosen by rule-of-thumb from n_cal=4000 (cube-root -> K=20, Rice -> K=30).  
+Init is selected by res metric (`fpr_res`, `roc_auc_res`, or `inertia_res`); report test metrics only.
 
-Selection table (criterion → method + K → test metrics):
+| rule | init_select | method | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| n/a | n/a | raw-score (doctor, res-selected) | 1 | 0.2244 | 0.9351 |
+| cube-root (K=20) | fpr_res | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2657 | 0.9290 |
+| cube-root (K=20) | roc_auc_res | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2657 | 0.9290 |
+| cube-root (K=20) | inertia_res | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2349 | 0.9289 |
+| Rice (K=30) | fpr_res | kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.2953 | 0.9200 |
+| Rice (K=30) | roc_auc_res | kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.3219 | 0.9240 |
+| Rice (K=30) | inertia_res | kmeans-doctor-cdf (score=mean, alpha=any) | 30 | 0.3219 | 0.9240 |
+| cube-root (K=20) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.2657 | 0.9335 |
+| cube-root (K=20) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.2657 | 0.9335 |
+| cube-root (K=20) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.2349 | 0.9314 |
+| Rice (K=30) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.5153 | 0.9093 |
+| Rice (K=30) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.3089 | 0.9238 |
+| Rice (K=30) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.05) | 30 | 0.3089 | 0.9238 |
+| cube-root (K=20) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2657 | 0.9332 |
+| cube-root (K=20) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2657 | 0.9332 |
+| cube-root (K=20) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2349 | 0.9314 |
+| Rice (K=30) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.5153 | 0.9118 |
+| Rice (K=30) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.2812 | 0.9260 |
+| Rice (K=30) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.1) | 30 | 0.2812 | 0.9260 |
+| cube-root (K=20) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2657 | 0.9327 |
+| cube-root (K=20) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2657 | 0.9327 |
+| cube-root (K=20) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2349 | 0.9311 |
+| Rice (K=30) | fpr_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.4193 | 0.9165 |
+| Rice (K=30) | roc_auc_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.3219 | 0.9273 |
+| Rice (K=30) | inertia_res | kmeans-doctor-cdf (score=upper, alpha=0.5) | 30 | 0.3219 | 0.9273 |
 
-| criterion | method | K | fpr_test | roc_auc_test |
+Oracle best test per method (diagnostic only; selection uses test):
+
+| select | method | k | init | fpr_test | roc_auc_test |
+|---|---|---|---|---|---|
+| best fpr_test | kmeans-doctor-cdf (score=mean, alpha=any) | 50 | 5 | 0.2150 | 0.9221 |
+| best roc_auc_test | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 5 | 0.2452 | 0.9293 |
+| best fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 4 | 0.2349 | 0.9314 |
+| best roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 2 | 0.2657 | 0.9335 |
+| best fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 4 | 0.2349 | 0.9314 |
+| best roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 2 | 0.2657 | 0.9332 |
+| best fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 4 | 0.2349 | 0.9311 |
+| best roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 2 | 0.2657 | 0.9327 |
+
+Best mean test performance per method (mean ± std over inits for each K):
+
+| select | method | k | fpr_test | roc_auc_test |
 |---|---|---|---|---|
-| best `fpr_res` | kmeans (score=mean) | 50 | 0.29799 | 0.92128 |
-| best `roc_auc_res` | kmeans (score=upper, α=0.1) | 50 | 0.51655 | 0.90808 |
-
-Best grid-wide test performance:
-
-| metric | method | K | value |
-|---|---|---|---|
-| min `fpr_test` | kmeans (score=mean) | 20 | 0.23680 |
-| max `roc_auc_test` | kmeans (score=upper) | 20 | 0.92866 |
+| best mean fpr_test | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2453 ± 0.0110 | 0.9276 ± 0.0018 |
+| best mean roc_auc_test | kmeans-doctor-cdf (score=mean, alpha=any) | 20 | 0.2453 ± 0.0110 | 0.9276 ± 0.0018 |
+| best mean fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.05) | 10 | 0.2617 ± 0.0163 | 0.9243 ± 0.0003 |
+| best mean roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.05) | 20 | 0.2627 ± 0.0199 | 0.9296 ± 0.0037 |
+| best mean fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2542 ± 0.0188 | 0.9298 ± 0.0032 |
+| best mean roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2542 ± 0.0188 | 0.9298 ± 0.0032 |
+| best mean fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2453 ± 0.0110 | 0.9297 ± 0.0031 |
+| best mean roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2453 ± 0.0110 | 0.9297 ± 0.0031 |
