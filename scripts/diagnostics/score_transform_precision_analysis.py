@@ -78,11 +78,12 @@ def _collect_logits(
     magnitude: float,
     temperature: float,
     normalize: bool,
+    dtype: torch.dtype,
 ) -> torch.Tensor:
     logits_all = []
     model.eval()
     for inputs, _ in loader:
-        inputs = inputs.to(device)
+        inputs = inputs.to(device=device, dtype=dtype)
         if magnitude > 0:
             logits = _compute_adv_logits(
                 model=model,
@@ -94,38 +95,8 @@ def _collect_logits(
         else:
             with torch.no_grad():
                 logits = model(inputs)
-        logits_all.append(logits.detach().cpu())
+        logits_all.append(logits.detach())
     return torch.cat(logits_all, dim=0)
-
-
-def _score_transform(
-    values: torch.Tensor,
-    *,
-    transform: str | None,
-    eps: float | None,
-    gamma: float | None,
-    dtype: torch.dtype,
-) -> torch.Tensor:
-    if transform is None:
-        return values.to(dtype)
-    vals = values.to(dtype).flatten()
-    ref = torch.sort(vals).values
-    counts = torch.searchsorted(ref, vals, right=True)
-    n = ref.numel()
-    if transform == "rank":
-        cdf = (counts.float() - 0.5) / n
-    else:
-        cdf = counts.float() / n
-    if transform in ["rank", "cdf_logit", "cdf_power"]:
-        if eps is None:
-            eps = 0.5 / n
-        cdf = torch.clamp(cdf, eps, 1 - eps)
-    if transform == "cdf_power":
-        gamma = float(gamma or 1.0)
-        cdf = torch.pow(cdf, gamma)
-    if transform == "cdf_logit":
-        cdf = torch.log(cdf / (1 - cdf))
-    return cdf
 
 
 def _unique_stats(values: torch.Tensor) -> tuple[int, int]:
@@ -144,6 +115,8 @@ def main() -> None:
     parser.add_argument("--seed-split", type=int, default=9)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--dtypes", nargs="+", default=["float16", "float32", "float64"])
+    parser.add_argument("--save-logits", action="store_true")
+    parser.add_argument("--latent-dir", default=None)
     args = parser.parse_args()
 
     data_cfg = Config(args.config_dataset)
@@ -188,50 +161,11 @@ def main() -> None:
     )
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = get_model(
-        model_name=model_cfg["model_name"],
-        dataset_name=data_cfg["name"],
-        n_classes=data_cfg["num_classes"],
-        model_seed=model_cfg["seed"],
-        checkpoint_dir=os.path.join(
-            os.environ.get("CHECKPOINTS_DIR", "checkpoints/"),
-            model_cfg["preprocessor"],
-        ),
-    ).to(device)
-    model.eval()
-    for p in model.parameters():
-        p.requires_grad_(False)
 
     temp = float(detection_cfg["postprocessor_args"]["temperature"])
     mag = float(detection_cfg["postprocessor_args"].get("magnitude", 0.0))
     normalize = bool(detection_cfg["postprocessor_args"].get("normalize", False))
-
-    res_logits = _collect_logits(
-        model=model,
-        loader=res_loader,
-        device=device,
-        magnitude=mag,
-        temperature=temp,
-        normalize=normalize,
-    )
-
-    detector = PartitionPostprocessor(
-        model=model,
-        cfg=detection_cfg["postprocessor_args"],
-        result_folder=args.output_dir,
-        device=device,
-    )
-    raw_scores = detector._extract_embeddings(logits=res_logits)
-    if raw_scores.dim() > 1 and raw_scores.size(1) == 1:
-        raw_scores = raw_scores.squeeze(1)
-    if raw_scores.dim() != 1:
-        raise ValueError("Expected 1D raw scores for precision analysis.")
-
-    u_actual = detector._apply_score_transform(raw_scores, fit=True)
-
-    transform = detector.score_transform
-    eps = detector.score_transform_eps
-    gamma = detector.score_transform_gamma
+    use_perturbed_logits = bool(detection_cfg.get("experience_args", {}).get("use_perturbed_logits", False))
 
     dtype_map = {
         "float16": torch.float16,
@@ -244,27 +178,89 @@ def main() -> None:
         dtype = dtype_map.get(name)
         if dtype is None:
             raise ValueError(f"Unsupported dtype: {name}")
-        raw_unique, raw_max = _unique_stats(raw_scores.to(dtype))
-        if name == "float32":
-            u_vals = u_actual.to(torch.float32)
-        else:
-            u_vals = _score_transform(
-                raw_scores,
-                transform=transform,
-                eps=eps,
-                gamma=gamma,
-                dtype=dtype,
-            )
-        u_unique, u_max = _unique_stats(u_vals)
+        if dtype is torch.float16 and device.type != "cuda":
+            raise RuntimeError("float16 analysis requires CUDA; no GPU detected.")
+
+        model = get_model(
+            model_name=model_cfg["model_name"],
+            dataset_name=data_cfg["name"],
+            n_classes=data_cfg["num_classes"],
+            model_seed=model_cfg["seed"],
+            checkpoint_dir=os.path.join(
+                os.environ.get("CHECKPOINTS_DIR", "checkpoints/"),
+                model_cfg["preprocessor"],
+            ),
+        ).to(device=device, dtype=dtype)
+        model.eval()
+        for p in model.parameters():
+            p.requires_grad_(False)
+
+        res_logits = _collect_logits(
+            model=model,
+            loader=res_loader,
+            device=device,
+            magnitude=mag if use_perturbed_logits else 0.0,
+            temperature=temp,
+            normalize=normalize,
+            dtype=dtype,
+        )
+
+        detector = PartitionPostprocessor(
+            model=model,
+            cfg=detection_cfg["postprocessor_args"],
+            result_folder=args.output_dir,
+            device=device,
+        )
+        raw_scores = detector._extract_embeddings(logits=res_logits)
+        if raw_scores.dim() > 1 and raw_scores.size(1) == 1:
+            raw_scores = raw_scores.squeeze(1)
+        if raw_scores.dim() != 1:
+            raise ValueError("Expected 1D raw scores for precision analysis.")
+
+        u_vals = detector._apply_score_transform(raw_scores, fit=True)
+
+        raw_scores_cpu = raw_scores.detach().cpu()
+        u_vals_cpu = u_vals.detach().cpu()
+
+        raw_unique, raw_max = _unique_stats(raw_scores_cpu)
+        u_unique, u_max = _unique_stats(u_vals_cpu)
         rows.append(
             {
                 "dtype": name,
-                "score_transform": transform or "none",
                 "raw_unique": raw_unique,
                 "raw_max_count": raw_max,
                 "u_unique": u_unique,
                 "u_max_count": u_max,
-                "u_source": "actual" if name == "float32" else "emulated",
+            }
+        )
+
+        if args.save_logits:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            logits_path = output_dir / f"logits_res_{name}.pt"
+            torch.save(
+                {
+                    "logits": res_logits.detach().cpu(),
+                    "dtype": name,
+                    "temperature": temp,
+                    "magnitude": mag,
+                    "normalize": normalize,
+                },
+                logits_path,
+            )
+        if args.latent_dir:
+            latent_dir = Path(args.latent_dir)
+            latent_dir.mkdir(parents=True, exist_ok=True)
+            latent_path = latent_dir / f"latent_res_{name}.pt"
+            torch.save(
+                {
+                    "logits": res_logits.detach().cpu(),
+                    "dtype": name,
+                    "temperature": temp,
+                    "magnitude": mag,
+                    "normalize": normalize,
+                },
+                latent_path,
             }
         )
 
@@ -278,12 +274,15 @@ def main() -> None:
     with stats_path.open("w", encoding="utf-8") as handle:
         json.dump(
             {
-                "n_res": int(raw_scores.numel()),
+                "n_res": int(data_cfg["n_samples"]["res"]),
                 "temperature": temp,
                 "magnitude": mag,
                 "normalize": normalize,
-                "score_transform": transform,
+                "score_transform": detection_cfg["postprocessor_args"].get("score_transform"),
                 "dtypes": args.dtypes,
+                "use_perturbed_logits": use_perturbed_logits,
+                "save_logits": bool(args.save_logits),
+                "latent_dir": args.latent_dir,
             },
             handle,
             indent=2,
