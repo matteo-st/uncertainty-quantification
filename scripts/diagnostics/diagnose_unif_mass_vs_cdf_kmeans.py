@@ -303,8 +303,14 @@ def main() -> None:
             device=device,
         )
         detector.fit(logits=res_logits, detector_labels=torch.zeros(res_scores.numel()), fit_clustering=True)
-        clusters_cal = detector.predict_clusters(logits=cal_logits).squeeze(0).cpu().numpy()
-        clusters_test = detector.predict_clusters(logits=test_logits).squeeze(0).cpu().numpy()
+        clusters_cal = detector.predict_clusters(logits=cal_logits).cpu()
+        clusters_test = detector.predict_clusters(logits=test_logits).cpu()
+        if clusters_cal.ndim > 1:
+            clusters_cal = clusters_cal[0]
+        if clusters_test.ndim > 1:
+            clusters_test = clusters_test[0]
+        clusters_cal = clusters_cal.numpy()
+        clusters_test = clusters_test.numpy()
         counts_km_cal = np.bincount(clusters_cal, minlength=k)
         counts_km_test = np.bincount(clusters_test, minlength=k)
         summary[str(k)]["kmeans_cdf_cal"] = _summarize_counts(counts_km_cal)
