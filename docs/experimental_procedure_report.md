@@ -370,6 +370,22 @@ Related work (monotone calibration and binning):
 | oracle best fpr_test | unif-mass (upper, alpha=0.50) | 20 | 0.4495 | 0.9106 |
 | oracle best roc_auc_test | unif-mass (upper, alpha=0.50) | 20 | 0.4495 | 0.9106 |
 
+#### n_res=1000 (perturbed logits, diagnostic; same K rules)
+Source: `results/cifar10/resnet34_ce/partition/runs/unif-mass-grid-nres1000-perturbed-20260117/`  
+Note: `use_perturbed_logits=True` with doctor-selected (temperature=0.9, magnitude=0.002, normalize=true).
+
+| rule | method | k | fpr_test | roc_auc_test |
+|---|---|---|---|---|
+| n/a | raw-score (doctor, res-selected) | 1 | 0.2244 | 0.9351 |
+| cube-root (K=15.9) | unif-mass (mean, alpha=any) | 20 | 0.3617 | 0.9273 |
+| cube-root (K=15.9) | unif-mass (upper, alpha=0.05) | 20 | 0.3617 | 0.9280 |
+| cube-root (K=15.9) | unif-mass (upper, alpha=0.10) | 20 | 0.3617 | 0.9280 |
+| cube-root (K=15.9) | unif-mass (upper, alpha=0.50) | 20 | 0.3617 | 0.9280 |
+| Rice (K=31.7) | unif-mass (mean, alpha=any) | 30 | 0.3875 | 0.9234 |
+| Rice (K=31.7) | unif-mass (upper, alpha=0.05) | 30 | 0.3875 | 0.9253 |
+| Rice (K=31.7) | unif-mass (upper, alpha=0.10) | 30 | 0.3875 | 0.9253 |
+| Rice (K=31.7) | unif-mass (upper, alpha=0.50) | 30 | 0.3875 | 0.9253 |
+
 #### n_res=2000 (n_cal=3000, K_cube=14.4, K_Rice=28.8)
 | rule | method | k | fpr_test | roc_auc_test |
 |---|---|---|---|---|
@@ -773,3 +789,21 @@ Best mean test performance per method (mean ± std over inits for each K):
 | best mean roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.1) | 20 | 0.2542 ± 0.0188 | 0.9298 ± 0.0032 |
 | best mean fpr_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2453 ± 0.0110 | 0.9297 ± 0.0031 |
 | best mean roc_auc_test | kmeans-doctor-cdf (score=upper, alpha=0.5) | 20 | 0.2453 ± 0.0110 | 0.9297 ± 0.0031 |
+
+#### Diagnostic: unif-mass vs CDF bin occupancy (n_res=1000, perturbed logits)
+Source: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/`  
+All diagnostics use doctor-selected (temperature=0.9, magnitude=0.002, normalize=true) with `use_perturbed_logits=True`.
+
+Test counts per bin (min / median / max):
+- K=20 unif-mass (cal bins): 216 / 249.5 / 288
+- K=20 CDF uniform bins: 204 / 239.5 / 301
+- K=20 kmeans CDF: 197 / 234.5 / 324
+- K=30 unif-mass (cal bins): 138 / 169 / 202
+- K=30 CDF uniform bins: 127 / 167.5 / 214
+- K=30 kmeans CDF: 56 / 166 / 255
+
+Plots:
+- CDF u distributions: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_u_cal_hist.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_u_test_hist.png`
+- Unif-mass test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/unif_mass_cal_bins_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/unif_mass_cal_bins_k30_test_counts.png`
+- CDF uniform test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_uniform_bins_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_uniform_bins_k30_test_counts.png`
+- K-means CDF test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/kmeans_cdf_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/kmeans_cdf_k30_test_counts.png`

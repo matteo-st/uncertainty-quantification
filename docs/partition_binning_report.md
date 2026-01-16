@@ -62,6 +62,23 @@ Curves use the seed-9 grid runs with CDF-transformed gini scores (doctor res-sel
 ![CIFAR-10: ROC-AUC vs K (soft-kmeans + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_softkmeans_roc_auc.png)
 ![CIFAR-10: FPR@95 vs K (soft-kmeans + CDF)](partition_binning_assets/cdf_kmeans_softkmeans_nres1000_softkmeans_fpr.png)
 
+## Diagnostic: CDF vs uniform-mass bin occupancy (n_res=1000)
+Diagnostics use perturbed logits (doctor res-selected; temperature=0.9, magnitude=0.002, normalize=true). Counts are shown on the test split for K=20 and K=30.
+
+### CDF score distribution
+![CDF u distribution (cal)](partition_binning_assets/cdf_diag_u_cal_hist.png)
+![CDF u distribution (test)](partition_binning_assets/cdf_diag_u_test_hist.png)
+
+### K=20 counts on test
+![Uniform-mass bins (K=20) counts](partition_binning_assets/cdf_diag_unif_mass_k20_test_counts.png)
+![CDF uniform bins (K=20) counts](partition_binning_assets/cdf_diag_uniform_k20_test_counts.png)
+![K-means on CDF (K=20) counts](partition_binning_assets/cdf_diag_kmeans_k20_test_counts.png)
+
+### K=30 counts on test
+![Uniform-mass bins (K=30) counts](partition_binning_assets/cdf_diag_unif_mass_k30_test_counts.png)
+![CDF uniform bins (K=30) counts](partition_binning_assets/cdf_diag_uniform_k30_test_counts.png)
+![K-means on CDF (K=30) counts](partition_binning_assets/cdf_diag_kmeans_k30_test_counts.png)
+
 ## Best-K diagnostics (seed 9)
 Best ROC-AUC on test (upper, alpha=0.05) occurs at K=20 for both datasets. The plots below show the bin-level confidence intervals and empirical means for that K using the seed-9 split (the last seed saved by the sweep).
 
