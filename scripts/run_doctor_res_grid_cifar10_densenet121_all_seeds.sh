@@ -15,6 +15,7 @@ python -m error_estimation.experiments.run_detection \
   --seed-splits 1 2 3 4 5 6 7 8 9 \
   --data-dir "${DATA_DIR}" \
   --checkpoints-dir "${CHECKPOINTS_DIR}" \
+  --logits-dtype float64 \
   --no-mlflow
 
 # Save cal/test metrics for all grid configurations (doctor scores).
@@ -27,4 +28,5 @@ python -m error_estimation.experiments.run_detection \
   --seed-splits 1 2 3 4 5 6 7 8 9 \
   --data-dir "${DATA_DIR}" \
   --checkpoints-dir "${CHECKPOINTS_DIR}" \
+  --logits-dtype float64 \
   --no-mlflow
