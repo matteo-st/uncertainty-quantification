@@ -70,11 +70,10 @@ def _compute_scores(
     return torch.cat(scores).numpy()
 
 
-def _rank_cdf(values: np.ndarray) -> np.ndarray:
-    order = np.argsort(values, kind="mergesort")
-    ranks = np.empty_like(order)
-    ranks[order] = np.arange(values.size)
-    return (ranks + 0.5) / values.size
+def _cdf_transform(values: np.ndarray) -> np.ndarray:
+    ref = np.sort(values.astype(np.float64, copy=False))
+    counts = np.searchsorted(ref, values, side="right")
+    return counts / float(values.size)
 
 
 def _plot_score_distribution(
@@ -226,13 +225,13 @@ def main() -> None:
         magnitude=args.magnitude,
         normalize=args.normalize,
     )
-    cdf_vals = _rank_cdf(scores)
+    cdf_vals = _cdf_transform(scores)
     order = np.argsort(scores)
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
     ax.plot(scores[order], cdf_vals[order], color="#F58518", linewidth=2.5)
     ax.set_title("Empirical CDF (res)")
     ax.set_xlabel("gini score")
-    ax.set_ylabel("u = rank(s)/n")
+    ax.set_ylabel("u = count(s)/n")
     ax.set_ylim(0, 1)
     for q in [0.5, 0.9, 0.99]:
         ax.axvline(np.quantile(scores, q), color="#72B7B2", linestyle="--", linewidth=1)
