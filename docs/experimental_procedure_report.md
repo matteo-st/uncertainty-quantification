@@ -1024,6 +1024,66 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 
 ---
 
+## Isotonic Regression with Bin Splitting (9 seeds)
+
+**Motivation:** Isotonic regression creates coarse bins with many ties, hurting threshold-based metrics. We hypothesize that splitting large bins could improve resolution.
+
+**Algorithm:**
+1. Fit isotonic regression on cal data → creates adaptive bins via PAV
+2. Split bins with > n_max samples at the median until all bins have n_min ≤ size ≤ n_max
+3. Compute error rate per sub-bin (no monotonicity enforcement)
+4. n_min tuned via 5-fold cross-validation on cal split
+
+**Configuration:**
+- n_min grid: [20, 30, 50, 75, 100] (selected by CV on cal)
+- n_max: 200 (fixed)
+- Doctor hyperparameters selected on res split using FPR@95
+
+**Source:** `results/<dataset>/<model>_ce/isotonic_splitting/runs/isotonic-splitting-cal-fit-doctor-allseeds-20260117/`
+
+### Results Summary
+
+| Dataset | Model | FPR@95 (test) ↓ | ROC-AUC (test) ↑ | n_min selected |
+|---------|-------|-----------------|------------------|----------------|
+| CIFAR10 | resnet34 | 0.5402 ± 0.2683 | 0.9136 ± 0.0149 | 20 (6/9), 100 (3/9) |
+| CIFAR10 | densenet121 | 0.5230 ± 0.2161 | 0.9056 ± 0.0084 | 20 (9/9) |
+| CIFAR100 | resnet34 | 0.4236 ± 0.0282 | 0.8770 ± 0.0054 | 20 (9/9) |
+| CIFAR100 | densenet121 | 0.4789 ± 0.0241 | 0.8533 ± 0.0037 | 20 (9/9) |
+
+### Comparison: Isotonic vs Isotonic+Splitting
+
+| Dataset | Model | Isotonic FPR | Isotonic+Split FPR | Δ FPR |
+|---------|-------|--------------|---------------------|-------|
+| CIFAR10 | resnet34 | 0.4527 ± 0.1736 | 0.5402 ± 0.2683 | +0.0875 (worse) |
+| CIFAR10 | densenet121 | 0.3588 ± 0.0167 | 0.5230 ± 0.2161 | +0.1642 (worse) |
+| CIFAR100 | resnet34 | 0.4225 ± 0.0287 | 0.4236 ± 0.0282 | +0.0011 (similar) |
+| CIFAR100 | densenet121 | 0.4999 ± 0.0333 | 0.4789 ± 0.0241 | -0.0210 (better) |
+
+### Threshold Transfer Issue
+
+Some seeds show FPR=1.0 on test (seeds 1, 6 for CIFAR10/resnet34):
+
+| Seed | n_min | FPR (cal) | FPR (test) | thr (cal) | thr (test) |
+|------|-------|-----------|------------|-----------|------------|
+| 1 | 20 | 0.366 | 1.000 | 0.0092 | 0.0 |
+| 6 | 20 | 0.231 | 1.000 | 0.0204 | 0.0 |
+
+**Root cause:** When calibrated probabilities are binned, the threshold selected on cal may not exist in test predictions. If the minimum calibrated probability in test is higher than the cal threshold, the effective threshold becomes 0, classifying all samples as positive.
+
+### Isotonic+Splitting Observations
+
+1. **Splitting does not improve FPR:** Contrary to hypothesis, splitting large isotonic bins worsens FPR on CIFAR-10 and shows marginal effects on CIFAR-100. The increased resolution introduces threshold transfer issues.
+
+2. **High variance on CIFAR-10:** FPR std > 0.21 indicates extreme sensitivity to seed. Two seeds (1, 6) produce FPR=1.0 due to threshold transfer failure.
+
+3. **n_min=20 consistently selected:** CV selects smallest n_min, preferring finer resolution. However, this leads to unstable bin boundaries and threshold transfer issues.
+
+4. **CIFAR-100 slightly better:** With higher error rate (~25%), more samples per bin lead to more stable boundaries. CIFAR-100 densenet121 shows slight improvement (-0.021 FPR).
+
+5. **Conclusion:** Bin splitting after isotonic regression does not solve the FPR degradation problem. The fundamental issue is that discretizing continuous scores creates threshold transfer instabilities. Alternative approaches (e.g., Venn-ABERS, ROC-regularized isotonic) may be needed.
+
+---
+
 ### Key Observations
 
 1. **Performance gap vs baseline:** K-means+CDF partition shows consistent performance degradation vs. continuous Doctor baseline across all configurations:
