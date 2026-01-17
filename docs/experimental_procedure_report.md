@@ -986,15 +986,17 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 
 ### Comparison with Doctor Baseline
 
+Doctor values copied from "Doctor Baseline (Continuous Score)" table in Multi-Dataset section above.
+
 | Dataset | Model | Method | FPR@95 (test) | ROC-AUC (test) |
 |---------|-------|--------|---------------|----------------|
-| CIFAR-10 | ResNet-34 | Doctor | 0.198 ± 0.078 | 0.941 ± 0.012 |
+| CIFAR-10 | ResNet-34 | Doctor | 0.1982 ± 0.0176 | 0.9297 ± 0.0115 |
 | CIFAR-10 | ResNet-34 | Isotonic | 0.453 ± 0.174 | 0.925 ± 0.006 |
-| CIFAR-10 | DenseNet-121 | Doctor | 0.265 ± 0.034 | 0.930 ± 0.005 |
+| CIFAR-10 | DenseNet-121 | Doctor | 0.2650 ± 0.0232 | 0.9124 ± 0.0055 |
 | CIFAR-10 | DenseNet-121 | Isotonic | 0.359 ± 0.017 | 0.914 ± 0.005 |
-| CIFAR-100 | ResNet-34 | Doctor | 0.364 ± 0.040 | 0.893 ± 0.005 |
+| CIFAR-100 | ResNet-34 | Doctor | 0.3948 ± 0.0187 | 0.8726 ± 0.0041 |
 | CIFAR-100 | ResNet-34 | Isotonic | 0.422 ± 0.029 | 0.880 ± 0.005 |
-| CIFAR-100 | DenseNet-121 | Doctor | 0.461 ± 0.024 | 0.863 ± 0.006 |
+| CIFAR-100 | DenseNet-121 | Doctor | 0.4614 ± 0.0145 | 0.8570 ± 0.0040 |
 | CIFAR-100 | DenseNet-121 | Isotonic | 0.500 ± 0.033 | 0.856 ± 0.004 |
 
 ### Isotonic Observations
@@ -1002,10 +1004,10 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 1. **Calibration degrades FPR:** Isotonic calibration consistently increases FPR@95 compared to raw Doctor scores:
    - CIFAR-10 ResNet-34: +0.255 FPR (0.198 → 0.453)
    - CIFAR-10 DenseNet-121: +0.094 FPR (0.265 → 0.359)
-   - CIFAR-100 ResNet-34: +0.058 FPR (0.364 → 0.422)
+   - CIFAR-100 ResNet-34: +0.027 FPR (0.395 → 0.422)
    - CIFAR-100 DenseNet-121: +0.039 FPR (0.461 → 0.500)
 
-2. **ROC-AUC also decreases:** Though the ranking should theoretically be preserved (isotonic is monotonic), ROC-AUC drops by 0.01-0.02 due to ties introduced by the piecewise-constant isotonic fit.
+2. **ROC-AUC comparable or slightly better for isotonic:** Interestingly, isotonic shows similar or marginally improved ROC-AUC on CIFAR-10 DenseNet-121 and CIFAR-100 ResNet-34, suggesting the monotonic transformation preserves ranking quality.
 
 3. **High variance on CIFAR-10 ResNet-34:** FPR std=0.174 indicates sensitivity to the calibration split. This may be due to limited calibration samples (n_cal=4000) for learning the isotonic mapping.
 
