@@ -39,13 +39,13 @@ class IsotonicSplittingPostprocessor(BasePostprocessor):
 
         # Base score configuration
         self.base_score = cfg.get("base_score", "gini")
-        self.temperature = cfg.get("temperature", 1.0)
+        self.temperature = float(cfg.get("temperature", 1.0))
         self.normalize = cfg.get("normalize", False)
-        self.magnitude = cfg.get("magnitude", 0.0)
+        self.magnitude = float(cfg.get("magnitude", 0.0))
 
-        # Splitting configuration
-        self.n_min = cfg.get("n_min", 50)  # Minimum samples per bin
-        self.n_max = cfg.get("n_max", 200)  # Maximum samples per bin (triggers split)
+        # Splitting configuration - ensure integer types
+        self.n_min = int(cfg.get("n_min", 50))  # Minimum samples per bin
+        self.n_max = int(cfg.get("n_max", 200))  # Maximum samples per bin (triggers split)
 
         # Initial isotonic regression
         self.isotonic = IsotonicRegression(
@@ -54,8 +54,8 @@ class IsotonicSplittingPostprocessor(BasePostprocessor):
         )
 
         # After splitting: store bin boundaries and error rates
-        self.bin_edges = None  # List of (lower, upper) score boundaries
-        self.bin_error_rates = None  # Error rate for each bin
+        self.bin_edges = []  # List of (lower, upper) score boundaries
+        self.bin_error_rates = []  # Error rate for each bin
         self.is_fitted = False
 
     def _compute_base_score(self, logits):
@@ -165,10 +165,10 @@ class IsotonicSplittingPostprocessor(BasePostprocessor):
             else:
                 upper = np.inf
 
-            bin_edges.append((lower, upper))
+            bin_edges.append((float(lower), float(upper)))
 
             # Compute error rate for this bin
-            error_rate = bin_info['labels'].mean()
+            error_rate = float(bin_info['labels'].mean())
             bin_error_rates.append(error_rate)
 
         return bin_edges, bin_error_rates
@@ -209,10 +209,13 @@ class IsotonicSplittingPostprocessor(BasePostprocessor):
 
     def _get_bin_index(self, score):
         """Find which bin a score belongs to."""
+        if len(self.bin_edges) == 0:
+            return 0  # Fallback if no bins (shouldn't happen)
+
         for i, (lower, upper) in enumerate(self.bin_edges):
             if lower <= score < upper:
                 return i
-        # Handle edge case: score equals max
+        # Handle edge case: score >= max or outside all bins
         return len(self.bin_edges) - 1
 
     @torch.no_grad()
@@ -235,16 +238,16 @@ class IsotonicSplittingPostprocessor(BasePostprocessor):
         # Compute base scores
         base_scores = self._compute_base_score(logits)
 
-        if not self.is_fitted:
+        if not self.is_fitted or len(self.bin_edges) == 0:
             return base_scores
 
         # Apply bin-based prediction
-        scores = base_scores.detach().cpu().numpy()
-        calibrated = np.zeros_like(scores)
+        scores = base_scores.detach().cpu().numpy().astype(np.float64)
+        calibrated = np.zeros(len(scores), dtype=np.float64)
 
         for i, score in enumerate(scores):
-            bin_idx = self._get_bin_index(score)
-            calibrated[i] = self.bin_error_rates[bin_idx]
+            bin_idx = self._get_bin_index(float(score))
+            calibrated[i] = float(self.bin_error_rates[bin_idx])
 
         return torch.tensor(calibrated, dtype=torch.float32, device=self.device)
 
