@@ -550,7 +550,7 @@ class EvaluatorAblation:
                 )
             
                 # self.fit_clustering()
-        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp" ]:
+        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic"]:
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),
@@ -1069,7 +1069,7 @@ class HyperparamsSearch(EvaluatorAblation):
             #     self.prepare_configs_group()
             #     self.cross_validation_magnitude()
 
-            if self.postprocessor_name in ["odin", "doctor"]:
+            if self.postprocessor_name in ["odin", "doctor", "isotonic"]:
                 if self.verbose:
                     print("Performing hyperparameter search without fitting")
                 t0 = time.time()
@@ -1112,7 +1112,7 @@ class HyperparamsSearch(EvaluatorAblation):
 
         if self.postprocessor_name in ["partition", "clustering"]:
             self.fit_clustering()
-        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp" ]:
+        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic"]:
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),

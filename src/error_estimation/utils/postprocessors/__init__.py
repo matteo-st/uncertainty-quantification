@@ -7,6 +7,7 @@ from .random_forest_postprocessor import RandomForestPostprocessor
 from .base_scikit_postprocessor import GenericScikitPostprocessor
 from .mlp_postprocessor_scikit import MLPPostprocessor
 from .conformal_postprocessor import ConformalPostprocessor
+from .isotonic_postprocessor import IsotonicPostprocessor
 
 
 postprocessors = {
@@ -19,6 +20,7 @@ postprocessors = {
     "scikit": GenericScikitPostprocessor,
     "mlp": MLPPostprocessor,
     "conformal": ConformalPostprocessor,
+    "isotonic": IsotonicPostprocessor,
     }
 
 def get_postprocessor(postprocessor_name, model, cfg, result_folder, device):

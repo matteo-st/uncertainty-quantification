@@ -1,0 +1,23 @@
+name: isotonic
+postprocessor_args:
+  base_score: gini
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+
+experience_args:
+  n_folds: None
+  n_epochs:
+    res: None
+    cal: 1
+  transform:
+    res: None
+    cal: test
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag_prefix: doctor-res-grid-nres{n_res}-
+    root_dir: ./results
+
+postprocessor_grid: {}
