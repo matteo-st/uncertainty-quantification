@@ -977,41 +977,50 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 
 ### Results Summary
 
-| Dataset | Model | FPR@95 (test) ↓ | ROC-AUC (test) ↑ | AURC (test) ↓ | AUPR-Err (test) ↑ |
-|---------|-------|-----------------|------------------|---------------|-------------------|
-| CIFAR-10 | ResNet-34 | 0.453 ± 0.174 | 0.925 ± 0.006 | 0.152 ± 0.008 | 0.409 ± 0.027 |
-| CIFAR-10 | DenseNet-121 | 0.359 ± 0.017 | 0.914 ± 0.005 | 0.172 ± 0.007 | 0.403 ± 0.017 |
-| CIFAR-100 | ResNet-34 | 0.422 ± 0.029 | 0.880 ± 0.005 | 0.444 ± 0.008 | 0.631 ± 0.012 |
-| CIFAR-100 | DenseNet-121 | 0.500 ± 0.033 | 0.856 ± 0.004 | 0.487 ± 0.008 | 0.619 ± 0.011 |
+| Dataset | Model | FPR@95 (test) ↓ | ROC-AUC (test) ↑ |
+|---------|-------|-----------------|------------------|
+| CIFAR10 | resnet34 | 0.4527 ± 0.1736 | 0.9247 ± 0.0056 |
+| CIFAR10 | densenet121 | 0.3588 ± 0.0167 | 0.9143 ± 0.0048 |
+| CIFAR100 | resnet34 | 0.4225 ± 0.0287 | 0.8797 ± 0.0049 |
+| CIFAR100 | densenet121 | 0.4999 ± 0.0333 | 0.8558 ± 0.0036 |
+
+### Overfitting Analysis (Cal vs Test)
+
+| Dataset | Model | FPR (cal) | FPR (test) | Δ FPR | ROC-AUC (cal) | ROC-AUC (test) | Δ ROC-AUC |
+|---------|-------|-----------|------------|-------|---------------|----------------|-----------|
+| CIFAR10 | resnet34 | 0.4118 ± 0.1479 | 0.4527 ± 0.1736 | +0.0409 | 0.9283 ± 0.0062 | 0.9247 ± 0.0056 | -0.0036 |
+| CIFAR10 | densenet121 | 0.3549 ± 0.0134 | 0.3588 ± 0.0167 | +0.0040 | 0.9181 ± 0.0045 | 0.9143 ± 0.0048 | -0.0038 |
+| CIFAR100 | resnet34 | 0.4193 ± 0.0166 | 0.4225 ± 0.0287 | +0.0031 | 0.8821 ± 0.0028 | 0.8797 ± 0.0049 | -0.0025 |
+| CIFAR100 | densenet121 | 0.4826 ± 0.0253 | 0.4999 ± 0.0333 | +0.0173 | 0.8621 ± 0.0050 | 0.8558 ± 0.0036 | -0.0062 |
 
 ### Comparison with Doctor Baseline
 
-Doctor values copied from "Doctor Baseline (Continuous Score)" table in Multi-Dataset section above.
-
 | Dataset | Model | Method | FPR@95 (test) | ROC-AUC (test) |
 |---------|-------|--------|---------------|----------------|
-| CIFAR-10 | ResNet-34 | Doctor | 0.1982 ± 0.0176 | 0.9297 ± 0.0115 |
-| CIFAR-10 | ResNet-34 | Isotonic | 0.453 ± 0.174 | 0.925 ± 0.006 |
-| CIFAR-10 | DenseNet-121 | Doctor | 0.2650 ± 0.0232 | 0.9124 ± 0.0055 |
-| CIFAR-10 | DenseNet-121 | Isotonic | 0.359 ± 0.017 | 0.914 ± 0.005 |
-| CIFAR-100 | ResNet-34 | Doctor | 0.3948 ± 0.0187 | 0.8726 ± 0.0041 |
-| CIFAR-100 | ResNet-34 | Isotonic | 0.422 ± 0.029 | 0.880 ± 0.005 |
-| CIFAR-100 | DenseNet-121 | Doctor | 0.4614 ± 0.0145 | 0.8570 ± 0.0040 |
-| CIFAR-100 | DenseNet-121 | Isotonic | 0.500 ± 0.033 | 0.856 ± 0.004 |
+| CIFAR10 | resnet34 | Doctor | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+| CIFAR10 | resnet34 | Isotonic | 0.4527 ± 0.1736 | 0.9247 ± 0.0056 |
+| CIFAR10 | densenet121 | Doctor | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+| CIFAR10 | densenet121 | Isotonic | 0.3588 ± 0.0167 | 0.9143 ± 0.0048 |
+| CIFAR100 | resnet34 | Doctor | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+| CIFAR100 | resnet34 | Isotonic | 0.4225 ± 0.0287 | 0.8797 ± 0.0049 |
+| CIFAR100 | densenet121 | Doctor | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+| CIFAR100 | densenet121 | Isotonic | 0.4999 ± 0.0333 | 0.8558 ± 0.0036 |
 
 ### Isotonic Observations
 
-1. **Calibration degrades FPR:** Isotonic calibration consistently increases FPR@95 compared to raw Doctor scores:
-   - CIFAR-10 ResNet-34: +0.255 FPR (0.198 → 0.453)
-   - CIFAR-10 DenseNet-121: +0.094 FPR (0.265 → 0.359)
-   - CIFAR-100 ResNet-34: +0.027 FPR (0.395 → 0.422)
-   - CIFAR-100 DenseNet-121: +0.039 FPR (0.461 → 0.500)
+1. **Overfitting:** Isotonic shows mild overfitting with FPR increasing +0.003 to +0.041 from cal to test, and ROC-AUC decreasing -0.003 to -0.006. The overfitting is modest but consistent across all configurations.
 
-2. **ROC-AUC comparable or slightly better for isotonic:** Interestingly, isotonic shows similar or marginally improved ROC-AUC on CIFAR-10 DenseNet-121 and CIFAR-100 ResNet-34, suggesting the monotonic transformation preserves ranking quality.
+2. **Calibration degrades FPR:** Isotonic calibration increases FPR@95 compared to raw Doctor scores:
+   - CIFAR10 resnet34: +0.2545 FPR (0.1982 → 0.4527)
+   - CIFAR10 densenet121: +0.0939 FPR (0.2650 → 0.3588)
+   - CIFAR100 resnet34: +0.0276 FPR (0.3948 → 0.4225)
+   - CIFAR100 densenet121: +0.0385 FPR (0.4614 → 0.4999)
 
-3. **High variance on CIFAR-10 ResNet-34:** FPR std=0.174 indicates sensitivity to the calibration split. This may be due to limited calibration samples (n_cal=4000) for learning the isotonic mapping.
+3. **ROC-AUC comparable:** Isotonic shows similar ROC-AUC to Doctor, with slight improvements on CIFAR10 densenet121 (+0.0019) and CIFAR100 resnet34 (+0.0071), suggesting the monotonic transformation preserves ranking quality.
 
-4. **Conclusion:** For failure detection, raw uncertainty scores (Doctor/gini) outperform isotonic-calibrated probabilities when evaluated by FPR@95 and ROC-AUC. Isotonic regression is better suited for obtaining well-calibrated probability estimates rather than optimizing ranking metrics.
+4. **High variance on CIFAR10 resnet34:** FPR std=0.1736 indicates sensitivity to the calibration split, likely due to limited calibration samples (n_cal=4000).
+
+5. **Conclusion:** For failure detection, raw Doctor scores outperform isotonic-calibrated probabilities on FPR@95. Isotonic regression is better suited for probability calibration rather than ranking optimization.
 
 ---
 
