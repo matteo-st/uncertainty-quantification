@@ -697,18 +697,18 @@ class HyperparamsSearch(EvaluatorAblation):
                         conf = val_conf
                         detector_labels = self.values["cal"]["detector_labels"][va_idx]
                         metrics = val_metrics
-                    fpr, tpr, thr, auroc, accuracy, aurc_value, aupr_in, aupr_out = compute_all_metrics(
+                    computed = compute_all_metrics(
                         conf=conf.cpu().numpy(),
                         detector_labels=detector_labels.cpu().numpy(),
                     )
-                    metrics["fpr"].append(fpr)
-                    metrics["tpr"].append(tpr)
-                    metrics["thr"].append(thr)
-                    metrics["roc_auc"].append(auroc)
-                    metrics["model_acc"].append(accuracy)
-                    metrics["aurc"].append(aurc_value)
-                    metrics["aupr_err"].append(aupr_in)
-                    metrics["aupr_success"].append(aupr_out)
+                    metrics["fpr"].append(computed["fpr"])
+                    metrics["tpr"].append(computed["tpr"])
+                    metrics["thr"].append(computed["thr"])
+                    metrics["roc_auc"].append(computed["roc_auc"])
+                    metrics["model_acc"].append(computed["accuracy"])
+                    metrics["aurc"].append(computed["aurc"])
+                    metrics["aupr_err"].append(computed["aupr_in"])
+                    metrics["aupr_success"].append(computed["aupr_out"])
             
             results = {}
             [results.update({f"{metric}_tr_cross": np.mean(tr_metrics[metric]), f"{metric}_tr_cross_std": np.std(tr_metrics[metric])}) for metric in tr_metrics.keys()]
@@ -733,19 +733,19 @@ class HyperparamsSearch(EvaluatorAblation):
                 )
                 # Evaluate on test set
                 test_conf = dec(logits=self.values["test"]["logits"])
-                fpr, tpr, thr, auroc, accuracy, aurc_value, aupr_in, aupr_out = compute_all_metrics(
+                computed = compute_all_metrics(
                     conf=test_conf.cpu().numpy(),
                     detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
                 )
                 # Add test metrics to results
-                list_results[dec_idx]["fpr_test"] = fpr
-                list_results[dec_idx]["tpr_test"] = tpr
-                list_results[dec_idx]["thr_test"] = thr
-                list_results[dec_idx]["roc_auc_test"] = auroc
-                list_results[dec_idx]["model_acc_test"] = accuracy
-                list_results[dec_idx]["aurc_test"] = aurc_value
-                list_results[dec_idx]["aupr_err_test"] = aupr_in
-                list_results[dec_idx]["aupr_success_test"] = aupr_out
+                list_results[dec_idx]["fpr_test"] = computed["fpr"]
+                list_results[dec_idx]["tpr_test"] = computed["tpr"]
+                list_results[dec_idx]["thr_test"] = computed["thr"]
+                list_results[dec_idx]["roc_auc_test"] = computed["roc_auc"]
+                list_results[dec_idx]["model_acc_test"] = computed["accuracy"]
+                list_results[dec_idx]["aurc_test"] = computed["aurc"]
+                list_results[dec_idx]["aupr_err_test"] = computed["aupr_in"]
+                list_results[dec_idx]["aupr_success_test"] = computed["aupr_out"]
 
             # Rebuild hyperparam_results with test metrics
             hyperparam_results = pd.concat(list_results, axis=0)
