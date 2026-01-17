@@ -1,6 +1,6 @@
 # Experimental Procedure: Binned Error Detectors With Guarantees
 
-Last updated: 2026-01-12
+Last updated: 2026-01-17
 
 ## Goal
 Transform an existing uncertainty/error score into a calibrated error detector with statistical guarantees, while minimizing performance loss.
@@ -807,3 +807,241 @@ Plots:
 - Unif-mass test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/unif_mass_cal_bins_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/unif_mass_cal_bins_k30_test_counts.png`
 - CDF uniform test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_uniform_bins_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/cdf_uniform_bins_k30_test_counts.png`
 - K-means CDF test counts: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/kmeans_cdf_k20_test_counts.png`, `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-20260116/seed-split-9/analysis/diagnose_unif_mass_vs_cdf/kmeans_cdf_k30_test_counts.png`
+
+---
+
+## Multi-Dataset / Multi-Model Results (K-means + CDF Partition)
+
+**Date:** 2026-01-17
+
+### Experimental Setup
+
+- **Datasets:** CIFAR-10, CIFAR-100
+- **Models:** ResNet-34, DenseNet-121
+- **Splits:** n_res=1000, n_cal=4000, n_test=5000
+- **Seeds:** 1-9 (mean ± std reported)
+- **Base score:** Doctor (gini) with hyperparameters selected on res split by FPR@95
+- **Partition method:** K-means clustering on CDF-transformed scores
+- **Grid:** n_clusters ∈ {5, 10, 20, 30, 50, 75, 100, 150, 200, 300}, alpha ∈ {0.05, 0.1, 0.5}, score ∈ {mean, upper}
+
+### Methods
+
+The partition postprocessor outputs a binned score. Four distinct methods are evaluated:
+- **mean**: Use empirical bin error rate as score (alpha not used)
+- **upper (α=0.05)**: Use upper bound of 95% confidence interval
+- **upper (α=0.1)**: Use upper bound of 90% confidence interval
+- **upper (α=0.5)**: Use upper bound of 50% confidence interval
+
+### Protocol
+
+1. **Doctor hyperparameter search on res:** Find best (temperature, magnitude, normalize) by FPR@95 on res split
+2. **Partition fitting on res:** Fit K-means clustering on CDF(doctor_score) using res split
+3. **Binning/counting on cal:** Compute bin error rates and confidence intervals on cal split
+4. **Evaluation on test:** Report final metrics on held-out test split
+
+---
+
+### Doctor Baseline (Continuous Score)
+
+| Dataset | Model | Seeds | temperature | magnitude | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|---------|-------|-------|-------------|-----------|-----------|------------|----------------|
+| CIFAR-10 | ResNet-34 | 9 | 0.73 ± 0.05 | 0.0027 ± 0.0010 | 0.1976 ± 0.0134 | 0.1982 ± 0.0176 | 0.9297 ± 0.0115 |
+| CIFAR-10 | DenseNet-121 | 9 | 0.90 ± 0.23 | 0.0020 ± 0.0000 | 0.2686 ± 0.0225 | 0.2650 ± 0.0232 | 0.9124 ± 0.0055 |
+| CIFAR-100 | ResNet-34 | 9 | 0.80 ± 0.17 | 0.0020 ± 0.0000 | 0.3938 ± 0.0205 | 0.3948 ± 0.0187 | 0.8726 ± 0.0041 |
+| CIFAR-100 | DenseNet-121 | 9 | 0.87 ± 0.19 | 0.0000 ± 0.0000 | 0.4498 ± 0.0222 | 0.4614 ± 0.0145 | 0.8570 ± 0.0040 |
+
+---
+
+### CIFAR-10 / ResNet-34 (9 seeds)
+
+#### Selection on res split by FPR@95
+
+| Method | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|-----------|-----------|------------|----------------|
+| mean | 39.4 ± 18.8 | 0.2032 ± 0.0648 | 0.2395 ± 0.0512 | 0.2882 ± 0.0871 | 0.9126 ± 0.0099 |
+| upper (α=0.05) | 20.6 ± 10.1 | 0.2259 ± 0.0817 | 0.2826 ± 0.0560 | 0.2979 ± 0.0542 | 0.9090 ± 0.0111 |
+| upper (α=0.1) | 20.6 ± 10.1 | 0.2236 ± 0.0783 | 0.2783 ± 0.0577 | 0.2948 ± 0.0526 | 0.9095 ± 0.0112 |
+| upper (α=0.5) | 23.9 ± 13.2 | 0.2129 ± 0.0707 | 0.2692 ± 0.0606 | 0.2929 ± 0.0636 | 0.9103 ± 0.0105 |
+
+#### Selection on res split by ROC-AUC
+
+| Method | n_clusters | ROC-AUC (res) | ROC-AUC (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|---------------|---------------|------------|----------------|
+| mean | 24.4 ± 15.9 | 0.9186 ± 0.0248 | 0.9211 ± 0.0134 | 0.2516 ± 0.0340 | 0.9170 ± 0.0121 |
+| upper (α=0.05) | 13.3 ± 5.0 | 0.9162 ± 0.0248 | 0.9151 ± 0.0106 | 0.2656 ± 0.0539 | 0.9147 ± 0.0109 |
+| upper (α=0.1) | 14.4 ± 7.3 | 0.9163 ± 0.0247 | 0.9155 ± 0.0106 | 0.2728 ± 0.0577 | 0.9140 ± 0.0097 |
+| upper (α=0.5) | 17.8 ± 6.7 | 0.9176 ± 0.0240 | 0.9180 ± 0.0106 | 0.2694 ± 0.0416 | 0.9155 ± 0.0107 |
+
+#### Oracle: Best on test (per seed, then averaged)
+
+| Method | Selection | n_clusters | FPR (test) | ROC-AUC (test) |
+|--------|-----------|------------|------------|----------------|
+| mean | best FPR | 35.6 ± 14.2 | 0.2349 ± 0.0311 | 0.9162 ± 0.0117 |
+| mean | best ROC-AUC | 22.2 ± 6.7 | 0.2490 ± 0.0357 | 0.9186 ± 0.0125 |
+| upper (α=0.05) | best FPR | 36.7 ± 61.4 | 0.2562 ± 0.0374 | 0.9110 ± 0.0132 |
+| upper (α=0.05) | best ROC-AUC | 16.7 ± 7.1 | 0.2671 ± 0.0402 | 0.9157 ± 0.0115 |
+| upper (α=0.1) | best FPR | 37.8 ± 61.0 | 0.2530 ± 0.0339 | 0.9127 ± 0.0124 |
+| upper (α=0.1) | best ROC-AUC | 16.7 ± 7.1 | 0.2623 ± 0.0365 | 0.9162 ± 0.0117 |
+| upper (α=0.5) | best FPR | 20.0 ± 7.1 | 0.2461 ± 0.0281 | 0.9167 ± 0.0120 |
+| upper (α=0.5) | best ROC-AUC | 18.9 ± 6.0 | 0.2593 ± 0.0230 | 0.9171 ± 0.0121 |
+
+---
+
+### CIFAR-10 / DenseNet-121 (9 seeds)
+
+**Note:** High variance due to float32 precision issue in seed 2 (see Float Precision Fix below).
+
+#### Selection on res split by FPR@95
+
+| Method | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|-----------|-----------|------------|----------------|
+| mean | 36.1 ± 27.0 | 0.3308 ± 0.2226 | 0.3449 ± 0.1564 | 0.4559 ± 0.2241 | 0.8909 ± 0.0427 |
+| upper (α=0.05) | 37.8 ± 44.9 | 0.3373 ± 0.2220 | 0.3931 ± 0.1218 | 0.4117 ± 0.1207 | 0.8792 ± 0.0553 |
+| upper (α=0.1) | 38.9 ± 44.3 | 0.3357 ± 0.2219 | 0.3821 ± 0.1178 | 0.4096 ± 0.1147 | 0.8816 ± 0.0528 |
+| upper (α=0.5) | 38.9 ± 44.3 | 0.3329 ± 0.2221 | 0.3649 ± 0.1086 | 0.3943 ± 0.1104 | 0.8866 ± 0.0472 |
+
+#### Selection on res split by ROC-AUC
+
+| Method | n_clusters | ROC-AUC (res) | ROC-AUC (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|---------------|---------------|------------|----------------|
+| mean | 25.0 ± 15.0 | 0.9012 ± 0.0653 | 0.8963 ± 0.0601 | 0.3859 ± 0.1524 | 0.8937 ± 0.0434 |
+| upper (α=0.05) | 16.1 ± 6.0 | 0.8993 ± 0.0653 | 0.8885 ± 0.0575 | 0.4032 ± 0.1448 | 0.8922 ± 0.0433 |
+| upper (α=0.1) | 17.2 ± 5.7 | 0.8995 ± 0.0653 | 0.8896 ± 0.0581 | 0.3965 ± 0.1453 | 0.8932 ± 0.0435 |
+| upper (α=0.5) | 19.4 ± 6.3 | 0.9000 ± 0.0654 | 0.8919 ± 0.0587 | 0.3889 ± 0.1471 | 0.8937 ± 0.0436 |
+
+#### Oracle: Best on test (per seed, then averaged)
+
+| Method | Selection | n_clusters | FPR (test) | ROC-AUC (test) |
+|--------|-----------|------------|------------|----------------|
+| mean | best FPR | 32.2 ± 25.0 | 0.3535 ± 0.1146 | 0.8884 ± 0.0428 |
+| mean | best ROC-AUC | 25.6 ± 5.3 | 0.3765 ± 0.1264 | 0.8946 ± 0.0428 |
+| upper (α=0.05) | best FPR | 13.3 ± 8.3 | 0.3627 ± 0.1099 | 0.8864 ± 0.0465 |
+| upper (α=0.05) | best ROC-AUC | 15.0 ± 6.1 | 0.3930 ± 0.1492 | 0.8929 ± 0.0434 |
+| upper (α=0.1) | best FPR | 16.1 ± 9.3 | 0.3597 ± 0.1063 | 0.8881 ± 0.0460 |
+| upper (α=0.1) | best ROC-AUC | 16.1 ± 6.0 | 0.3946 ± 0.1468 | 0.8932 ± 0.0435 |
+| upper (α=0.5) | best FPR | 12.2 ± 6.2 | 0.3603 ± 0.1125 | 0.8878 ± 0.0440 |
+| upper (α=0.5) | best ROC-AUC | 22.2 ± 4.4 | 0.3819 ± 0.1162 | 0.8940 ± 0.0434 |
+
+---
+
+### CIFAR-100 / ResNet-34
+
+**Status:** Only 1 seed completed for K-means+CDF partition. Results omitted pending full run.
+
+---
+
+### CIFAR-100 / DenseNet-121 (9 seeds)
+
+#### Selection on res split by FPR@95
+
+| Method | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|-----------|-----------|------------|----------------|
+| mean | 33.3 ± 21.9 | 0.4396 ± 0.0385 | 0.5058 ± 0.0875 | 0.4854 ± 0.0219 | 0.8521 ± 0.0049 |
+| upper (α=0.05) | 19.4 ± 9.5 | 0.4411 ± 0.0390 | 0.5224 ± 0.0841 | 0.4910 ± 0.0215 | 0.8524 ± 0.0053 |
+| upper (α=0.1) | 20.6 ± 10.1 | 0.4410 ± 0.0389 | 0.5200 ± 0.0849 | 0.4890 ± 0.0189 | 0.8523 ± 0.0053 |
+| upper (α=0.5) | 23.3 ± 8.7 | 0.4418 ± 0.0414 | 0.4938 ± 0.0450 | 0.4906 ± 0.0167 | 0.8540 ± 0.0040 |
+
+#### Selection on res split by ROC-AUC
+
+| Method | n_clusters | ROC-AUC (res) | ROC-AUC (cal) | FPR (test) | ROC-AUC (test) |
+|--------|------------|---------------|---------------|------------|----------------|
+| mean | 24.4 ± 5.3 | 0.8635 ± 0.0100 | 0.8594 ± 0.0053 | 0.4919 ± 0.0260 | 0.8544 ± 0.0038 |
+| upper (α=0.05) | 21.1 ± 6.0 | 0.8631 ± 0.0103 | 0.8585 ± 0.0054 | 0.5009 ± 0.0317 | 0.8543 ± 0.0040 |
+| upper (α=0.1) | 22.2 ± 6.7 | 0.8632 ± 0.0103 | 0.8586 ± 0.0054 | 0.4983 ± 0.0327 | 0.8545 ± 0.0041 |
+| upper (α=0.5) | 22.2 ± 6.7 | 0.8634 ± 0.0102 | 0.8588 ± 0.0054 | 0.4975 ± 0.0329 | 0.8547 ± 0.0041 |
+
+#### Oracle: Best on test (per seed, then averaged)
+
+| Method | Selection | n_clusters | FPR (test) | ROC-AUC (test) |
+|--------|-----------|------------|------------|----------------|
+| mean | best FPR | 47.8 ± 28.3 | 0.4716 ± 0.0164 | 0.8519 ± 0.0070 |
+| mean | best ROC-AUC | 21.1 ± 6.0 | 0.4896 ± 0.0198 | 0.8549 ± 0.0037 |
+| upper (α=0.05) | best FPR | 20.0 ± 10.9 | 0.4825 ± 0.0241 | 0.8515 ± 0.0078 |
+| upper (α=0.05) | best ROC-AUC | 18.9 ± 6.0 | 0.4954 ± 0.0335 | 0.8548 ± 0.0039 |
+| upper (α=0.1) | best FPR | 26.1 ± 13.2 | 0.4799 ± 0.0217 | 0.8522 ± 0.0072 |
+| upper (α=0.1) | best ROC-AUC | 18.9 ± 6.0 | 0.4949 ± 0.0338 | 0.8549 ± 0.0040 |
+| upper (α=0.5) | best FPR | 30.6 ± 17.0 | 0.4762 ± 0.0214 | 0.8522 ± 0.0071 |
+| upper (α=0.5) | best ROC-AUC | 18.9 ± 6.0 | 0.4951 ± 0.0337 | 0.8550 ± 0.0039 |
+
+---
+
+## Isotonic Regression Calibration (9 seeds)
+
+**Setup:**
+- Fit isotonic regression on cal data to map gini scores → calibrated error probabilities
+- Doctor hyperparameters (temperature, magnitude, normalize) selected on res split using FPR@95
+- Evaluate calibrated probabilities on test set
+- All experiments use `--logits-dtype float64`
+
+**Source:** `results/<dataset>/<model>_ce/isotonic/runs/isotonic-cal-fit-doctor-allseeds-20260117/`
+
+### Results Summary
+
+| Dataset | Model | FPR@95 (test) ↓ | ROC-AUC (test) ↑ | AURC (test) ↓ | AUPR-Err (test) ↑ |
+|---------|-------|-----------------|------------------|---------------|-------------------|
+| CIFAR-10 | ResNet-34 | 0.453 ± 0.174 | 0.925 ± 0.006 | 0.152 ± 0.008 | 0.409 ± 0.027 |
+| CIFAR-10 | DenseNet-121 | 0.359 ± 0.017 | 0.914 ± 0.005 | 0.172 ± 0.007 | 0.403 ± 0.017 |
+| CIFAR-100 | ResNet-34 | 0.422 ± 0.029 | 0.880 ± 0.005 | 0.444 ± 0.008 | 0.631 ± 0.012 |
+| CIFAR-100 | DenseNet-121 | 0.500 ± 0.033 | 0.856 ± 0.004 | 0.487 ± 0.008 | 0.619 ± 0.011 |
+
+### Comparison with Doctor Baseline
+
+| Dataset | Model | Method | FPR@95 (test) | ROC-AUC (test) |
+|---------|-------|--------|---------------|----------------|
+| CIFAR-10 | ResNet-34 | Doctor | 0.198 ± 0.078 | 0.941 ± 0.012 |
+| CIFAR-10 | ResNet-34 | Isotonic | 0.453 ± 0.174 | 0.925 ± 0.006 |
+| CIFAR-10 | DenseNet-121 | Doctor | 0.265 ± 0.034 | 0.930 ± 0.005 |
+| CIFAR-10 | DenseNet-121 | Isotonic | 0.359 ± 0.017 | 0.914 ± 0.005 |
+| CIFAR-100 | ResNet-34 | Doctor | 0.364 ± 0.040 | 0.893 ± 0.005 |
+| CIFAR-100 | ResNet-34 | Isotonic | 0.422 ± 0.029 | 0.880 ± 0.005 |
+| CIFAR-100 | DenseNet-121 | Doctor | 0.461 ± 0.024 | 0.863 ± 0.006 |
+| CIFAR-100 | DenseNet-121 | Isotonic | 0.500 ± 0.033 | 0.856 ± 0.004 |
+
+### Isotonic Observations
+
+1. **Calibration degrades FPR:** Isotonic calibration consistently increases FPR@95 compared to raw Doctor scores:
+   - CIFAR-10 ResNet-34: +0.255 FPR (0.198 → 0.453)
+   - CIFAR-10 DenseNet-121: +0.094 FPR (0.265 → 0.359)
+   - CIFAR-100 ResNet-34: +0.058 FPR (0.364 → 0.422)
+   - CIFAR-100 DenseNet-121: +0.039 FPR (0.461 → 0.500)
+
+2. **ROC-AUC also decreases:** Though the ranking should theoretically be preserved (isotonic is monotonic), ROC-AUC drops by 0.01-0.02 due to ties introduced by the piecewise-constant isotonic fit.
+
+3. **High variance on CIFAR-10 ResNet-34:** FPR std=0.174 indicates sensitivity to the calibration split. This may be due to limited calibration samples (n_cal=4000) for learning the isotonic mapping.
+
+4. **Conclusion:** For failure detection, raw uncertainty scores (Doctor/gini) outperform isotonic-calibrated probabilities when evaluated by FPR@95 and ROC-AUC. Isotonic regression is better suited for obtaining well-calibrated probability estimates rather than optimizing ranking metrics.
+
+---
+
+### Key Observations
+
+1. **Performance gap vs baseline:** K-means+CDF partition shows consistent performance degradation vs. continuous Doctor baseline across all configurations:
+   - CIFAR-10 ResNet-34: +0.05-0.09 FPR (baseline 0.198 → partition ~0.25-0.29)
+   - CIFAR-10 DenseNet-121: +0.09-0.19 FPR (baseline 0.265 → partition ~0.35-0.46)
+   - CIFAR-100 DenseNet-121: +0.02-0.03 FPR (baseline 0.461 → partition ~0.48-0.49)
+
+2. **Method comparison (mean vs upper):** The `mean` score generally performs comparably or slightly better than `upper` bounds. Smaller alpha values in `upper` lead to more conservative (higher) scores but similar test performance.
+
+3. **Selection metric impact:** Selecting by ROC-AUC on res tends to yield lower n_clusters and slightly better test ROC-AUC, while selecting by FPR yields higher n_clusters.
+
+4. **Oracle gap:** The oracle (best on test) shows modest improvement over res-based selection (~0.02-0.05 FPR reduction), indicating that res-based selection is reasonably effective but not optimal.
+
+5. **CIFAR-10 DenseNet-121 anomaly:** Very high variance (std ~0.11-0.22) due to float32 precision issues affecting seed 2. Re-run with float64 recommended.
+
+6. **Hyperparameter stability:** Selected n_clusters varies substantially across seeds (std ~5-27), indicating sensitivity to the random split.
+
+### Float Precision Fix
+
+During these experiments, we identified a float32 precision issue affecting Doctor score computation:
+- Samples with extreme logit gaps (11-15) cause softmax underflow when scaled by temperature
+- This results in gini_norm=0 for "confident errors", breaking the score ranking
+- Fix: Added `--logits-dtype float64` option to `run_detection.py`
+- **Recommendation:** Re-run CIFAR-10 DenseNet-121 experiments with float64 to obtain reliable variance estimates
+
+### Source Paths
+
+- CIFAR-10 ResNet-34 K-means: `results/cifar10/resnet34_ce/partition/runs/kmeans-cdf-grid-nres1000-cifar10-resnet34-allseeds-20260116/`
+- CIFAR-10 DenseNet-121 K-means: `results/cifar10/densenet121_ce/partition/runs/kmeans-cdf-grid-nres1000-cifar10-densenet121-allseeds-20260116/`
+- CIFAR-100 DenseNet-121 K-means: `results/cifar100/densenet121_ce/partition/runs/kmeans-cdf-grid-nres1000-cifar100-densenet121-allseeds-20260117/`
+- Isotonic: `results/<dataset>/<model>_ce/isotonic/runs/isotonic-cal-fit-doctor-allseeds-20260117/`
+- Doctor baselines: `results/<dataset>/<model>_ce/doctor/runs/doctor-eval-grid-nres1000-*-allseeds-*/`
