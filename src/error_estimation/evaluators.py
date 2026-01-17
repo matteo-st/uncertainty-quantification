@@ -768,6 +768,93 @@ class HyperparamsSearch(EvaluatorAblation):
                 results=hyperparam_results,
             )
 
+    def search_fit_all(self):
+        """
+        Fit on cal and evaluate on both cal and test for ALL hyperparameter combinations.
+
+        Unlike search_cross_validation, this does NOT do CV - it fits on full cal set
+        and reports metrics for all configs. Useful when partition and counting use
+        the same data (e.g., uniform mass binning) where CV would break guarantees.
+        """
+        self.hyperparam_combination = list(make_grid(self.cfg_detection, key="postprocessor_grid"))
+
+        self.detectors = [get_postprocessor(
+            postprocessor_name=self.postprocessor_name,
+            model=self.model,
+            cfg=cfg,
+            result_folder=self.result_folder,
+            device=self.device
+        ) for cfg in self.hyperparam_combination]
+
+        list_results = []
+
+        for dec_idx, dec in tqdm(enumerate(self.detectors), total=len(self.detectors),
+                                  desc="Evaluating all configs", disable=False):
+            # Fit on full cal set
+            dec.fit(
+                logits=self.values["cal"]["logits"].to(dec.device),
+                detector_labels=self.values["cal"]["detector_labels"].to(dec.device)
+            )
+
+            # Evaluate on cal
+            cal_conf = dec(logits=self.values["cal"]["logits"])
+            cal_metrics = compute_all_metrics(
+                conf=cal_conf.cpu().numpy(),
+                detector_labels=self.values["cal"]["detector_labels"].cpu().numpy(),
+            )
+
+            # Evaluate on test
+            test_conf = dec(logits=self.values["test"]["logits"])
+            test_metrics = compute_all_metrics(
+                conf=test_conf.cpu().numpy(),
+                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+            )
+
+            # Combine results
+            results = {
+                "fpr_cal": cal_metrics["fpr"],
+                "tpr_cal": cal_metrics["tpr"],
+                "thr_cal": cal_metrics["thr"],
+                "roc_auc_cal": cal_metrics["roc_auc"],
+                "accuracy_cal": cal_metrics["accuracy"],
+                "aurc_cal": cal_metrics["aurc"],
+                "aupr_in_cal": cal_metrics["aupr_in"],
+                "aupr_out_cal": cal_metrics["aupr_out"],
+                "fpr_test": test_metrics["fpr"],
+                "tpr_test": test_metrics["tpr"],
+                "thr_test": test_metrics["thr"],
+                "roc_auc_test": test_metrics["roc_auc"],
+                "accuracy_test": test_metrics["accuracy"],
+                "aurc_test": test_metrics["aurc"],
+                "aupr_in_test": test_metrics["aupr_in"],
+                "aupr_out_test": test_metrics["aupr_out"],
+            }
+
+            results_df = pd.concat([
+                pd.DataFrame([self.hyperparam_combination[dec_idx]]),
+                pd.DataFrame([results])
+            ], axis=1)
+            list_results.append(results_df)
+
+        hyperparam_results = pd.concat(list_results, axis=0)
+
+        # Select best based on cal metric (but we report all)
+        scores = [res[f"{self.metric}_cal"].values[0] for res in list_results]
+        self.best_idx = select_best_index(scores, self.metric_direction)
+        self.config = self.hyperparam_combination[self.best_idx]
+        self.best_result = list_results[self.best_idx]
+        self.detector = self.detectors[self.best_idx]
+
+        print(f"Best Configs (by cal {self.metric}): {self.config}")
+        print(f"Cal {self.metric}: {self.best_result[f'{self.metric}_cal'].values}")
+        print(f"Test {self.metric}: {self.best_result[f'{self.metric}_test'].values}")
+
+        # Always save all results for oracle analysis
+        self.save_results(
+            result_file=os.path.join(self.result_folder, "search.jsonl"),
+            results=hyperparam_results,
+        )
+
     def search_partition_on_val(self):
 
         self.hyperparam_combination = list(make_grid(self.cfg_detection, key ="postprocessor_grid")) 
@@ -1105,11 +1192,19 @@ class HyperparamsSearch(EvaluatorAblation):
                 t1 = time.time()
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
-            elif self.postprocessor_name in ["random_forest", "scikit", "mlp", "isotonic_splitting", "uniform_mass"]:
+            elif self.postprocessor_name in ["random_forest", "scikit", "mlp", "isotonic_splitting"]:
                 if self.verbose:
-                    print("Performing hyperparameter search without fitting")
+                    print("Performing hyperparameter search with cross-validation")
                 t0 = time.time()
                 self.search_cross_validation()
+                t1 = time.time()
+                if self.verbose:
+                    print(f"Total time: {t1 - t0:.2f} seconds")
+            elif self.postprocessor_name == "uniform_mass":
+                if self.verbose:
+                    print("Performing hyperparameter search: fit all on cal, eval on test")
+                t0 = time.time()
+                self.search_fit_all()
                 t1 = time.time()
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")

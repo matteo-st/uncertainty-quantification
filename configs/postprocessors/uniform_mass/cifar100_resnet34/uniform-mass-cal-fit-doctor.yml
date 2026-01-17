@@ -7,7 +7,7 @@ postprocessor_args:
   n_bins: 10
 
 experience_args:
-  n_folds: 5
+  # No n_folds: uniform_mass fits on full cal set (no CV to preserve guarantees)
   n_epochs:
     res: None
     cal: 1
