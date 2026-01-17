@@ -1116,3 +1116,102 @@ During these experiments, we identified a float32 precision issue affecting Doct
 - CIFAR-100 DenseNet-121 K-means: `results/cifar100/densenet121_ce/partition/runs/kmeans-cdf-grid-nres1000-cifar100-densenet121-allseeds-20260117/`
 - Isotonic: `results/<dataset>/<model>_ce/isotonic/runs/isotonic-cal-fit-doctor-allseeds-20260117/`
 - Doctor baselines: `results/<dataset>/<model>_ce/doctor/runs/doctor-eval-grid-nres1000-*-allseeds-*/`
+- Uniform Mass: `results/<dataset>/<model>_ce/uniform_mass/runs/uniform-mass-cal-fit-doctor-allseeds-20260117/`
+
+---
+
+## Experiment: Uniform Mass Binning
+
+**Date:** 2026-01-17
+**Hypothesis:** Uniform mass binning (equal samples per bin using quantiles) can provide stable partitioning for FPR control, with guarantees preserved since partition and counting can use the same calibration data.
+
+### Method
+
+Uniform mass binning differs from uniform width binning in that bin boundaries are determined by quantiles, ensuring each bin contains approximately the same number of samples. This is the only partitioning method where we can define the partition on the same data used for counting (calibration set) while preserving statistical guarantees.
+
+**Experimental setup:**
+1. Select Doctor parameters (temperature, normalize, magnitude) on res split
+2. Compute Doctor scores on calibration set
+3. Create uniform mass bins using quantile-based boundaries on cal
+4. Count errors per bin on cal (same data as partition)
+5. Evaluate on test
+
+**Grid search:** n_bins ∈ {5, 10, 15, 20, 30, 50}
+
+**Note:** No cross-validation on cal to preserve guarantees (partition and counting use same data). All n_bins values are reported for oracle/deterministic rule analysis.
+
+### Results: FPR by n_bins
+
+**CIFAR-10 ResNet-34**
+| n_bins | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| 5 | 0.444 ± 0.104 | 0.465 ± 0.110 | 0.883 ± 0.006 |
+| 10 | 0.387 ± 0.062 | 0.419 ± 0.118 | 0.911 ± 0.007 |
+| 15 | 0.374 ± 0.070 | 0.375 ± 0.049 | 0.918 ± 0.005 |
+| 20 | 0.348 ± 0.048 | 0.403 ± 0.054 | 0.917 ± 0.007 |
+| 30 | 0.304 ± 0.030 | 0.496 ± 0.208 | 0.915 ± 0.013 |
+| 50 | 0.287 ± 0.081 | **0.804 ± 0.296** | 0.910 ± 0.012 |
+
+**CIFAR-10 DenseNet-121**
+| n_bins | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| 5 | 0.366 ± 0.002 | 0.367 ± 0.010 | 0.878 ± 0.005 |
+| 10 | 0.366 ± 0.002 | 0.367 ± 0.010 | 0.905 ± 0.005 |
+| 15 | 0.374 ± 0.023 | 0.368 ± 0.036 | 0.910 ± 0.004 |
+| 20 | 0.331 ± 0.026 | 0.410 ± 0.104 | 0.910 ± 0.005 |
+| 30 | 0.343 ± 0.039 | 0.408 ± 0.095 | 0.911 ± 0.006 |
+| 50 | 0.301 ± 0.027 | **0.555 ± 0.263** | 0.906 ± 0.008 |
+
+**CIFAR-100 ResNet-34**
+| n_bins | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| 5 | 0.501 ± 0.004 | 0.502 ± 0.014 | 0.863 ± 0.005 |
+| 10 | 0.487 ± 0.041 | 0.489 ± 0.034 | 0.876 ± 0.005 |
+| 15 | 0.447 ± 0.038 | 0.438 ± 0.036 | 0.877 ± 0.005 |
+| 20 | 0.433 ± 0.021 | 0.440 ± 0.024 | 0.878 ± 0.005 |
+| 30 | 0.429 ± 0.026 | **0.423 ± 0.018** | 0.876 ± 0.005 |
+| 50 | 0.428 ± 0.034 | 0.442 ± 0.021 | 0.877 ± 0.005 |
+
+**CIFAR-100 DenseNet-121**
+| n_bins | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| 5 | 0.504 ± 0.085 | 0.565 ± 0.124 | 0.841 ± 0.004 |
+| 10 | 0.490 ± 0.042 | 0.522 ± 0.059 | 0.853 ± 0.004 |
+| 15 | 0.485 ± 0.029 | 0.507 ± 0.037 | 0.855 ± 0.004 |
+| 20 | 0.483 ± 0.022 | 0.506 ± 0.025 | 0.854 ± 0.004 |
+| 30 | 0.480 ± 0.015 | **0.495 ± 0.022** | 0.854 ± 0.004 |
+| 50 | 0.470 ± 0.039 | 0.499 ± 0.029 | 0.853 ± 0.004 |
+
+### Selection Rule Analysis
+
+| Dataset | Model | Oracle FPR | Cal-Selected FPR | Rice Rule FPR (n≈31→30) |
+|---------|-------|------------|------------------|-------------------------|
+| CIFAR10 | resnet34 | **0.350 ± 0.059** | 0.811 ± 0.274 | 0.496 ± 0.208 |
+| CIFAR10 | densenet121 | **0.349 ± 0.023** | 0.496 ± 0.194 | 0.408 ± 0.095 |
+| CIFAR100 | resnet34 | **0.419 ± 0.011** | 0.443 ± 0.031 | 0.423 ± 0.018 |
+| CIFAR100 | densenet121 | **0.486 ± 0.024** | 0.495 ± 0.027 | 0.495 ± 0.022 |
+
+**Rice's Rule:** n_bins = 2 × n^(1/3) = 2 × 4000^(1/3) ≈ 31
+
+### Uniform Mass Observations
+
+1. **Severe cal-test gap on CIFAR-10:** Selecting n_bins by best cal FPR leads to catastrophic test FPR (0.81 for ResNet-34, 0.50 for DenseNet-121). The method overfits to calibration data, especially with high n_bins.
+
+2. **High n_bins causes instability:** n_bins=50 produces FPR test >0.55 on all CIFAR-10 models, with very high variance (std >0.26). Fine-grained binning exacerbates threshold transfer issues.
+
+3. **CIFAR-100 more stable:** With higher base error rate (~25%), there are more errors per bin, leading to more stable probability estimates. Cal-selected FPR is close to oracle on CIFAR-100.
+
+4. **Rice's rule performs reasonably:** Using n_bins≈30 (Rice's rule) provides a deterministic selection without tuning. Results are competitive with oracle on CIFAR-100 but suboptimal on CIFAR-10.
+
+5. **Oracle FPR around 0.35-0.49:** Even the best n_bins achieves only moderate FPR, significantly worse than continuous Doctor baseline (0.20-0.46). Discretization inherently loses information.
+
+6. **n_bins=15 often optimal on test:** Across datasets, n_bins=15 frequently achieves good cal-test agreement and reasonable FPR, suggesting a conservative choice of fewer bins.
+
+### Conclusion
+
+Uniform mass binning fails to provide reliable FPR control on CIFAR-10 due to:
+- **Overfitting:** Cal-based selection of n_bins leads to poor test generalization
+- **Threshold transfer:** Binned probabilities create discrete thresholds that may not transfer across splits
+- **Information loss:** Discretization degrades separation compared to continuous scores
+
+For CIFAR-100 (higher error rate), uniform mass binning performs reasonably, with Rice's rule providing a practical deterministic choice. However, the fundamental limitation of binning approaches—threshold transfer instability—remains a concern.
