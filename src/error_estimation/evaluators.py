@@ -550,7 +550,7 @@ class EvaluatorAblation:
                 )
             
                 # self.fit_clustering()
-        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic"]:
+        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic", "isotonic_splitting"]:
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),
@@ -716,13 +716,39 @@ class HyperparamsSearch(EvaluatorAblation):
 
     
             results = pd.concat([
-                pd.DataFrame([self.hyperparam_combination[dec_idx]]), 
+                pd.DataFrame([self.hyperparam_combination[dec_idx]]),
                 pd.DataFrame([results])],
                 axis=1)
             list_results.append(results)
 
         hyperparam_results = pd.concat(list_results, axis=0)
-                   
+
+        # Evaluate ALL configurations on test set (for oracle analysis)
+        if self.values.get("test") is not None and len(self.values["test"].get("logits", [])) > 0:
+            for dec_idx, dec in enumerate(self.detectors):
+                # Fit on full cal set
+                dec.fit(
+                    logits=self.values["cal"]["logits"],
+                    detector_labels=self.values["cal"]["detector_labels"]
+                )
+                # Evaluate on test set
+                test_conf = dec(logits=self.values["test"]["logits"])
+                fpr, tpr, thr, auroc, accuracy, aurc_value, aupr_in, aupr_out = compute_all_metrics(
+                    conf=test_conf.cpu().numpy(),
+                    detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+                )
+                # Add test metrics to results
+                list_results[dec_idx]["fpr_test"] = fpr
+                list_results[dec_idx]["tpr_test"] = tpr
+                list_results[dec_idx]["thr_test"] = thr
+                list_results[dec_idx]["roc_auc_test"] = auroc
+                list_results[dec_idx]["model_acc_test"] = accuracy
+                list_results[dec_idx]["aurc_test"] = aurc_value
+                list_results[dec_idx]["aupr_err_test"] = aupr_in
+                list_results[dec_idx]["aupr_success_test"] = aupr_out
+
+            # Rebuild hyperparam_results with test metrics
+            hyperparam_results = pd.concat(list_results, axis=0)
 
         scores = [np.mean(res[f"{self.metric}_val_cross"].values) for res in list_results]
         self.best_idx = select_best_index(scores, self.metric_direction)
@@ -732,6 +758,8 @@ class HyperparamsSearch(EvaluatorAblation):
 
         print(f"Best Configs: {self.config}")
         print(f"Best result ({self.metric}): {self.best_result[f'{self.metric}_val_cross'].values}")
+        if "fpr_test" in self.best_result.columns:
+            print(f"Test result ({self.metric}): {self.best_result[f'{self.metric}_test'].values}")
         # self.cal_results = self.best_result
 
         if self.save_search_results:
@@ -1077,7 +1105,7 @@ class HyperparamsSearch(EvaluatorAblation):
                 t1 = time.time()
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
-            elif self.postprocessor_name in ["random_forest", "scikit", "mlp"]:
+            elif self.postprocessor_name in ["random_forest", "scikit", "mlp", "isotonic_splitting"]:
                 if self.verbose:
                     print("Performing hyperparameter search without fitting")
                 t0 = time.time()
@@ -1112,7 +1140,7 @@ class HyperparamsSearch(EvaluatorAblation):
 
         if self.postprocessor_name in ["partition", "clustering"]:
             self.fit_clustering()
-        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic"]:
+        elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic", "isotonic_splitting"]:
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),

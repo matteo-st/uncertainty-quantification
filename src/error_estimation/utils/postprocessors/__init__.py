@@ -8,6 +8,7 @@ from .base_scikit_postprocessor import GenericScikitPostprocessor
 from .mlp_postprocessor_scikit import MLPPostprocessor
 from .conformal_postprocessor import ConformalPostprocessor
 from .isotonic_postprocessor import IsotonicPostprocessor
+from .isotonic_splitting_postprocessor import IsotonicSplittingPostprocessor
 
 
 postprocessors = {
@@ -21,6 +22,7 @@ postprocessors = {
     "mlp": MLPPostprocessor,
     "conformal": ConformalPostprocessor,
     "isotonic": IsotonicPostprocessor,
+    "isotonic_splitting": IsotonicSplittingPostprocessor,
     }
 
 def get_postprocessor(postprocessor_name, model, cfg, result_folder, device):

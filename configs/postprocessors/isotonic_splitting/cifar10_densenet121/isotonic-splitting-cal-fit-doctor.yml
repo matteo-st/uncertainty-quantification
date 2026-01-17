@@ -1,0 +1,26 @@
+name: isotonic_splitting
+postprocessor_args:
+  base_score: gini
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  n_min: 50
+  n_max: 200
+
+experience_args:
+  n_folds: 5
+  n_epochs:
+    res: None
+    cal: 1
+  transform:
+    res: None
+    cal: test
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag_prefix: doctor-res-grid-nres{n_res}-
+    root_dir: ./results
+
+postprocessor_grid:
+  n_min: [20, 30, 50, 75, 100]
