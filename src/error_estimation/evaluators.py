@@ -1145,6 +1145,13 @@ class HyperparamsSearch(EvaluatorAblation):
         self.get_values(self.res_loader, name="res")
         self.get_values(self.cal_loader)
         # self.get_values(self.calib_loader, calib=True)
+
+        # Load test data for methods that need it (e.g., uniform_mass for oracle analysis)
+        if self.postprocessor_name == "uniform_mass" and self.val_loader is not None:
+            if self.verbose:
+                print("Collecting values on test data")
+            self.get_values(self.val_loader, name="test")
+
         t1 = time.time()
         if self.verbose:
             print(f"Total time: {t1 - t0:.2f} seconds")
