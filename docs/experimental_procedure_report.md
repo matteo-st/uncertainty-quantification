@@ -1225,3 +1225,95 @@ Uniform mass binning fails to provide reliable FPR control on CIFAR-10 due to:
 - **Information loss:** Discretization degrades separation compared to continuous scores
 
 For CIFAR-100 (higher error rate), uniform mass binning performs reasonably, with Rice's rule providing a practical deterministic choice. However, the fundamental limitation of binning approaches—threshold transfer instability—remains a concern.
+
+---
+
+## 8. LDA Binning (Multi-Score Combination)
+
+### Motivation
+
+Single uncertainty scores (Doctor/Gini, Margin, MSP) each capture different aspects of prediction uncertainty. We hypothesize that combining multiple scores might provide better error detection than any single score alone. LDA (Linear Discriminant Analysis) provides a supervised projection that maximizes class separation between correct and incorrect predictions.
+
+### Method
+
+LDA binning combines multiple uncertainty scores through supervised dimensionality reduction, then applies uniform mass binning:
+
+1. **Score computation:** For each sample, compute multiple uncertainty scores (gini, margin, msp, entropy)
+2. **LDA projection on res:** Fit LDA to project multi-dimensional scores to 1D, supervised by error labels
+3. **Uniform mass binning on cal:** Apply quantile-based binning on the projected 1D score
+4. **Probability estimation:** Compute error rate per bin on calibration data
+5. **Evaluation:** Apply to test set
+
+**Per-score hyperparameter selection:** Best hyperparameters for each score (temperature, magnitude) are loaded from previous grid searches on res split:
+- Gini: from Doctor grid search
+- Margin: from Margin grid search
+- MSP: from ODIN grid search
+
+**Grid search:**
+- n_bins ∈ {5, 10, 15, 20, 30}
+- alpha ∈ {0.05, 0.1, 0.5}
+- score_type ∈ {mean, upper}
+- base_scores combinations: [gini,margin], [gini,msp], [gini,margin,msp], [gini,margin,entropy]
+
+### Results: FPR by Score Combination
+
+**CIFAR-10 ResNet-34**
+| Score Combination | FPR Cal | FPR Test |
+|-------------------|---------|----------|
+| gini, margin | 0.317 | 0.462 ± 0.118 |
+| gini, msp | 0.311 | 0.483 ± 0.123 |
+| gini, margin, msp | 0.352 | 0.530 ± 0.137 |
+| gini, margin, entropy | 0.354 | 0.616 ± 0.131 |
+
+**CIFAR-10 DenseNet-121**
+| Score Combination | FPR Cal | FPR Test |
+|-------------------|---------|----------|
+| gini, margin | 0.322 | 0.391 ± 0.036 |
+| gini, msp | 0.327 | 0.388 ± 0.034 |
+| gini, margin, msp | 0.333 | 0.405 ± 0.043 |
+| gini, margin, entropy | 0.350 | 0.420 ± 0.090 |
+
+**CIFAR-100 ResNet-34**
+| Score Combination | FPR Cal | FPR Test |
+|-------------------|---------|----------|
+| gini, margin | 0.418 | 0.459 ± 0.025 |
+| gini, msp | 0.422 | 0.460 ± 0.020 |
+| gini, margin, msp | 0.418 | 0.464 ± 0.018 |
+| gini, margin, entropy | 0.448 | 0.477 ± 0.020 |
+
+**CIFAR-100 DenseNet-121**
+| Score Combination | FPR Cal | FPR Test |
+|-------------------|---------|----------|
+| gini, margin | 0.475 | 0.517 ± 0.053 |
+| gini, msp | 0.471 | 0.527 ± 0.051 |
+| gini, margin, msp | 0.480 | 0.529 ± 0.054 |
+| gini, margin, entropy | 0.476 | 0.529 ± 0.054 |
+
+### Comparison with Baselines
+
+| Dataset | Model | LDA Binning | Uniform Mass (gini) | Doctor (raw) |
+|---------|-------|-------------|---------------------|--------------|
+| CIFAR10 | resnet34 | 0.462 ± 0.118 | **0.350 ± 0.062** | **0.198 ± 0.017** |
+| CIFAR10 | densenet121 | 0.388 ± 0.034 | **0.349 ± 0.024** | **0.265 ± 0.022** |
+| CIFAR100 | resnet34 | 0.459 ± 0.025 | **0.419 ± 0.012** | **0.395 ± 0.018** |
+| CIFAR100 | densenet121 | 0.517 ± 0.053 | **0.486 ± 0.026** | **0.461 ± 0.014** |
+
+### LDA Binning Observations
+
+1. **No improvement from score combination:** Contrary to our hypothesis, combining multiple scores via LDA does not improve FPR compared to single-score uniform mass binning. In all cases, LDA binning performs worse.
+
+2. **Two-score combinations best:** Among LDA variants, simpler two-score combinations (gini+margin, gini+msp) outperform three-score combinations. Adding entropy degrades performance.
+
+3. **LDA projection may overfit:** The supervised LDA projection, fit on res split, may not generalize well to cal/test. The projection optimizes for res split error separation but this may not transfer.
+
+4. **Binning dominates performance:** The binning step (uniform mass on 1D projected score) introduces the same discretization issues as single-score uniform mass. LDA projection doesn't address the fundamental threshold transfer problem.
+
+5. **Higher variance:** LDA binning shows higher variance than single-score methods (especially on CIFAR-10 ResNet-34: std=0.118 vs 0.062), suggesting the multi-score approach is less stable.
+
+6. **Redundant information:** Gini, margin, and MSP are all derived from softmax probabilities and are highly correlated. LDA may not find orthogonal discriminative directions.
+
+### Conclusion
+
+LDA-based multi-score combination fails to improve over simpler single-score methods. The approach adds complexity (LDA fitting, per-score hyperparameter selection) without performance gains. The fundamental issues of binning methods—threshold transfer and discretization loss—are not addressed by score combination.
+
+**Recommendation:** Use single-score methods (Doctor raw or uniform mass with gini) rather than multi-score LDA combination.
