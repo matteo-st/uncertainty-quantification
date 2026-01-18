@@ -118,69 +118,29 @@ def compute_entropy_score(logits, temperature=1.0):
 
 
 def load_score_configs(results_dir, dataset, model):
-    """Load best hyperparams for each score from previous grid searches."""
+    """Load best hyperparams for each score from LDA binning results.
+
+    The LDA binning experiments already loaded best hyperparams per score
+    from previous grid searches. We extract them from those results.
+    """
     configs = {}
 
-    # Gini config from Doctor grid
-    gini_path = results_dir / dataset / model / "doctor" / "runs"
-    if gini_path.exists():
-        # Find latest run
-        runs = sorted([d for d in gini_path.iterdir() if d.is_dir()], reverse=True)
+    # Try to load from LDA binning results (they contain score_configs)
+    lda_path = results_dir / dataset / model / "lda_binning" / "runs"
+    if lda_path.exists():
+        runs = sorted([d for d in lda_path.iterdir() if d.is_dir()], reverse=True)
         if runs:
-            # Load best config from first seed
-            for seed_dir in (runs[0] / "seed-split-1").parent.iterdir():
-                if seed_dir.name.startswith("seed-split"):
-                    search_file = seed_dir / "search.jsonl"
-                    if search_file.exists():
-                        with open(search_file) as f:
-                            records = [json.loads(l) for l in f if l.strip()]
-                        if records:
-                            # Find best by FPR
-                            best = min(records, key=lambda x: x.get("fpr_res", float("inf")))
-                            configs["gini"] = {
-                                "temperature": best.get("temperature", 1.0),
-                                "magnitude": best.get("magnitude", 0.0),
-                                "normalize": best.get("normalize", True)
-                            }
-                        break
-
-    # Margin config
-    margin_path = results_dir / dataset / model / "margin" / "runs"
-    if margin_path.exists():
-        runs = sorted([d for d in margin_path.iterdir() if d.is_dir()], reverse=True)
-        if runs:
-            for seed_dir in runs[0].iterdir():
-                if seed_dir.name.startswith("seed-split"):
-                    search_file = seed_dir / "search.jsonl"
-                    if search_file.exists():
-                        with open(search_file) as f:
-                            records = [json.loads(l) for l in f if l.strip()]
-                        if records:
-                            best = min(records, key=lambda x: x.get("fpr_res", float("inf")))
-                            configs["margin"] = {
-                                "temperature": best.get("temperature", 1.0),
-                                "magnitude": best.get("magnitude", 0.0)
-                            }
-                        break
-
-    # MSP config from ODIN grid
-    msp_path = results_dir / dataset / model / "msp" / "runs"
-    if msp_path.exists():
-        runs = sorted([d for d in msp_path.iterdir() if d.is_dir()], reverse=True)
-        if runs:
-            for seed_dir in runs[0].iterdir():
-                if seed_dir.name.startswith("seed-split"):
-                    search_file = seed_dir / "search.jsonl"
-                    if search_file.exists():
-                        with open(search_file) as f:
-                            records = [json.loads(l) for l in f if l.strip()]
-                        if records:
-                            best = min(records, key=lambda x: x.get("fpr_res", float("inf")))
-                            configs["msp"] = {
-                                "temperature": best.get("temperature", 1.0),
-                                "magnitude": best.get("magnitude", 0.0)
-                            }
-                        break
+            # Load from first seed
+            seed_dir = runs[0] / "seed-split-1"
+            search_file = seed_dir / "search.jsonl"
+            if search_file.exists():
+                with open(search_file) as f:
+                    for line in f:
+                        if line.strip():
+                            record = json.loads(line)
+                            if "score_configs" in record:
+                                configs = record["score_configs"]
+                                break
 
     # Default configs if not found
     if "gini" not in configs:
