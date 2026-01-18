@@ -1,0 +1,42 @@
+name: raw_lda
+
+postprocessor_args:
+  # Default hyperparameters (used if score_configs not provided)
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+
+  # Scores to combine with LDA
+  base_scores: ["gini", "margin"]
+
+  # Per-score hyperparameters will be loaded from previous runs
+  # via score_sources configuration below
+  score_configs: {}
+
+experience_args:
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+  # Load per-score hyperparameters from these source runs
+  # Each score will use the best hyperparameters selected on res split
+  score_sources:
+    gini:
+      postprocessor: doctor
+      run_tag: null  # Will use most recent run if null
+      select_on: res  # Select best hyperparameters based on res split
+    margin:
+      postprocessor: margin
+      run_tag: null
+      select_on: res
+    msp:
+      postprocessor: odin
+      run_tag: null
+      select_on: res
+
+# No grid search for raw_lda - it uses hyperparameters from source runs
+# To evaluate, use: --mode eval_grid with empty grid
+postprocessor_grid: {}

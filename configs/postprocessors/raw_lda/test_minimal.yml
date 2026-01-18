@@ -1,0 +1,28 @@
+name: raw_lda
+
+postprocessor_args:
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  base_scores: ["gini", "margin"]
+
+  # Fixed per-score configs for testing (no external loading)
+  score_configs:
+    gini:
+      temperature: 1.0
+      magnitude: 0.0
+      normalize: false
+    margin:
+      temperature: 1.0
+      magnitude: 0.0
+      normalize: false
+
+experience_args:
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid: {}

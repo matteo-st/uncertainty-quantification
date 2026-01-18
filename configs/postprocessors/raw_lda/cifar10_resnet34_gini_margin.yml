@@ -1,0 +1,29 @@
+name: raw_lda
+
+postprocessor_args:
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  base_scores: ["gini", "margin"]
+  score_configs: {}
+
+experience_args:
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+  # Load hyperparameters from doctor (for gini) and margin runs
+  score_sources:
+    gini:
+      postprocessor: doctor
+      run_tag: null
+      select_on: res
+    margin:
+      postprocessor: margin
+      run_tag: null
+      select_on: res
+
+postprocessor_grid: {}
