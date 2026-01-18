@@ -1293,7 +1293,7 @@ class HyperparamsSearch(EvaluatorAblation):
             #     self.prepare_configs_group()
             #     self.cross_validation_magnitude()
 
-            if self.postprocessor_name in ["odin", "doctor", "isotonic"]:
+            if self.postprocessor_name in ["odin", "doctor", "isotonic", "margin"]:
                 if self.verbose:
                     print("Performing hyperparameter search without fitting")
                 t0 = time.time()
