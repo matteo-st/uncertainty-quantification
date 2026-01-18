@@ -79,6 +79,11 @@ Hyperparameters vary across seeds. Example CIFAR-10 ResNet-34:
 1. **Inconsistent precision:** Some sections used 3-decimal places (0.930 ± 0.011), others used 4-decimal (0.9297 ± 0.0108) for the same values
 2. **Incorrect std values:** K-means section had different std values than actual computed values
 
+**Root Cause:**
+Values were **manually typed/transcribed** instead of being programmatically extracted and copied from result files. This led to:
+- Typos in std values (0.0176 instead of 0.0166 - likely 7↔6 transposition)
+- Inconsistent rounding conventions between sections written at different times
+
 **Examples:**
 - Isotonic section: FPR=0.1982 ± 0.0166, ROC-AUC=0.9297 ± 0.0108 (correct)
 - Uniform Mass section: FPR=0.198 ± 0.017, ROC-AUC=0.930 ± 0.011 (rounded but inconsistent)
