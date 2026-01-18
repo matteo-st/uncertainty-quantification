@@ -890,6 +890,13 @@ class HyperparamsSearch(EvaluatorAblation):
                 detector_labels=self.values["cal"]["detector_labels"].to(dec.device)
             )
 
+            # Evaluate raw LDA score (continuous, before binning) on test
+            raw_lda_score_test = dec._apply_lda(self.values["test"]["logits"])
+            raw_lda_metrics = compute_all_metrics(
+                conf=raw_lda_score_test,
+                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+            )
+
             # Evaluate on res
             res_conf = dec(logits=self.values["res"]["logits"])
             res_metrics = compute_all_metrics(
@@ -913,6 +920,10 @@ class HyperparamsSearch(EvaluatorAblation):
 
             # Combine results
             results = {
+                # Raw LDA score (continuous, before binning) - same for all binning configs
+                "raw_lda_fpr_test": raw_lda_metrics["fpr"],
+                "raw_lda_roc_auc_test": raw_lda_metrics["roc_auc"],
+                # Binned results
                 "fpr_res": res_metrics["fpr"],
                 "tpr_res": res_metrics["tpr"],
                 "roc_auc_res": res_metrics["roc_auc"],
