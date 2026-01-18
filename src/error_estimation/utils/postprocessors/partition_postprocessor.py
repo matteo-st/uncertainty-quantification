@@ -316,13 +316,17 @@ class PartitionPostprocessor(BasePostprocessor):
             cluster = torch.bucketize(embs, bin_edges[1:-1])
             return cluster
         elif self.method == "kmeans-constrained":
+            # Use simple nearest-centroid assignment for prediction
+            # (KMeansConstrained.predict() enforces constraints which fails on different-sized sets)
             if embs.dim() > 1 and embs.size(1) == 1:
                 embs = embs.squeeze(1)
             if embs.dim() == 1:
                 X = embs.detach().cpu().numpy().reshape(-1, 1)
             else:
                 X = embs.detach().cpu().numpy()
-            cluster_labels = self.clustering_algo.predict(X)
+            from scipy.spatial.distance import cdist
+            distances = cdist(X, self.clustering_algo.cluster_centers_, metric='euclidean')
+            cluster_labels = np.argmin(distances, axis=1)
             cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
             return cluster
 
