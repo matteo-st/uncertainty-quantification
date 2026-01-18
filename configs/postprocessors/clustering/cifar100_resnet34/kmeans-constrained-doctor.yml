@@ -1,0 +1,42 @@
+name: partition
+postprocessor_args:
+  alpha: 0.1
+  method: kmeans-constrained
+  bound: bernstein
+  n_classes: 100
+
+  space: gini
+  reorder_embs: False
+  temperature: 1.0
+  magnitude: 0.0
+  normalize: True
+  pred_weights: 0
+  score: upper
+
+  n_clusters: 100
+  init_scheme: k-means++
+  n_init: 10
+  max_iter: 300
+  clustering_seed: 42
+
+experience_args:
+  fit_partition_on_cal: False
+  use_perturbed_logits: True
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag: doctor-res-grid-nres1000-cifar100-resnet34-allseeds-20260116
+    root_dir: ./old_results
+  n_folds: null
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [10, 20, 30, 50, 75, 100, 150, 200, 300, 400, 500]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]
