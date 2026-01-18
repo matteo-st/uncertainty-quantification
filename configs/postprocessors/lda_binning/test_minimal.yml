@@ -1,0 +1,25 @@
+name: lda_binning
+postprocessor_args:
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  base_scores: ["gini", "margin"]
+  n_bins: 10
+  alpha: 0.05
+  score_type: mean
+  bound: hoeffding
+
+experience_args:
+  n_epochs:
+    res: None
+    cal: 1
+  transform:
+    res: None
+    cal: test
+
+postprocessor_grid:
+  alpha: [0.05]
+  score_type: ["mean", "upper"]
+  n_bins: [10]
+  base_scores:
+    - ["gini", "margin"]
