@@ -978,6 +978,125 @@ class HyperparamsSearch(EvaluatorAblation):
             results=hyperparam_results,
         )
 
+    def search_raw_lda(self):
+        """
+        Search for raw LDA postprocessor (LDA score combination WITHOUT binning).
+
+        1. Fit LDA on res split to learn the projection
+        2. For each base_scores combination, evaluate raw LDA score on res/cal/test
+        3. Report all configurations for analysis
+        """
+        self.hyperparam_combination = list(make_grid(self.cfg_detection, key="postprocessor_grid"))
+
+        # Create all detectors
+        self.detectors = [get_postprocessor(
+            postprocessor_name=self.postprocessor_name,
+            model=self.model,
+            cfg=cfg,
+            result_folder=self.result_folder,
+            device=self.device
+        ) for cfg in self.hyperparam_combination]
+
+        list_results = []
+
+        for dec_idx, dec in tqdm(enumerate(self.detectors), total=len(self.detectors),
+                                  desc="Evaluating raw LDA configs", disable=False):
+            # Step 1: Fit LDA on res split
+            dec.fit_lda(
+                logits=self.values["res"]["logits"].to(dec.device),
+                detector_labels=self.values["res"]["detector_labels"].to(dec.device)
+            )
+
+            # Evaluate raw LDA score on res
+            res_scores = dec(logits=self.values["res"]["logits"])
+            res_metrics = compute_all_metrics(
+                conf=res_scores.cpu().numpy(),
+                detector_labels=self.values["res"]["detector_labels"].cpu().numpy(),
+            )
+
+            # Evaluate raw LDA score on cal
+            cal_scores = dec(logits=self.values["cal"]["logits"])
+            cal_metrics = compute_all_metrics(
+                conf=cal_scores.cpu().numpy(),
+                detector_labels=self.values["cal"]["detector_labels"].cpu().numpy(),
+            )
+
+            # Evaluate raw LDA score on test
+            test_scores = dec(logits=self.values["test"]["logits"])
+            test_metrics = compute_all_metrics(
+                conf=test_scores.cpu().numpy(),
+                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+            )
+
+            # Combine results - all metrics on all splits
+            results = {
+                # Res metrics
+                "fpr_res": res_metrics["fpr"],
+                "tpr_res": res_metrics["tpr"],
+                "roc_auc_res": res_metrics["roc_auc"],
+                "aurc_res": res_metrics["aurc"],
+                "aupr_in_res": res_metrics["aupr_in"],
+                "aupr_out_res": res_metrics["aupr_out"],
+                # Cal metrics
+                "fpr_cal": cal_metrics["fpr"],
+                "tpr_cal": cal_metrics["tpr"],
+                "roc_auc_cal": cal_metrics["roc_auc"],
+                "aurc_cal": cal_metrics["aurc"],
+                "aupr_in_cal": cal_metrics["aupr_in"],
+                "aupr_out_cal": cal_metrics["aupr_out"],
+                # Test metrics
+                "fpr_test": test_metrics["fpr"],
+                "tpr_test": test_metrics["tpr"],
+                "roc_auc_test": test_metrics["roc_auc"],
+                "accuracy_test": test_metrics["accuracy"],
+                "aurc_test": test_metrics["aurc"],
+                "aupr_in_test": test_metrics["aupr_in"],
+                "aupr_out_test": test_metrics["aupr_out"],
+            }
+
+            # Add LDA diagnostics
+            diag = dec.get_diagnostics()
+            if diag.get("lda_coef") is not None:
+                results["lda_coef"] = str(diag["lda_coef"])
+            if diag.get("base_scores") is not None:
+                results["base_scores_used"] = str(diag["base_scores"])
+
+            results_df = pd.concat([
+                pd.DataFrame([self.hyperparam_combination[dec_idx]]),
+                pd.DataFrame([results])
+            ], axis=1)
+            list_results.append(results_df)
+
+        hyperparam_results = pd.concat(list_results, axis=0)
+
+        # Select best based on res metric (since we fit on res)
+        scores = [res[f"{self.metric}_res"].values[0] for res in list_results]
+        self.best_idx = select_best_index(scores, self.metric_direction)
+        self.config = self.hyperparam_combination[self.best_idx]
+        self.best_result = list_results[self.best_idx]
+        self.detector = self.detectors[self.best_idx]
+
+        print(f"Best Configs (by res {self.metric}): {self.config}")
+        print(f"Res {self.metric}: {self.best_result[f'{self.metric}_res'].values}")
+        print(f"Cal {self.metric}: {self.best_result[f'{self.metric}_cal'].values}")
+        print(f"Test {self.metric}: {self.best_result[f'{self.metric}_test'].values}")
+
+        # Convert list columns to strings for pandas compatibility
+        for col in hyperparam_results.columns:
+            if hyperparam_results[col].apply(lambda x: isinstance(x, list)).any():
+                hyperparam_results[col] = hyperparam_results[col].apply(
+                    lambda x: str(x) if isinstance(x, list) else x
+                )
+
+        # Store results for run_detection.py
+        self.results = hyperparam_results
+
+        # Save all results
+        self.save_results(
+            result_file=os.path.join(self.result_folder, "search.jsonl"),
+            results=hyperparam_results,
+        )
+
     def search_partition_on_val(self):
 
         self.hyperparam_combination = list(make_grid(self.cfg_detection, key ="postprocessor_grid")) 
@@ -1269,8 +1388,8 @@ class HyperparamsSearch(EvaluatorAblation):
         self.get_values(self.cal_loader)
         # self.get_values(self.calib_loader, calib=True)
 
-        # Load test data for methods that need it (e.g., uniform_mass, lda_binning for oracle analysis)
-        if self.postprocessor_name in ["uniform_mass", "lda_binning"] and self.val_loader is not None:
+        # Load test data for methods that need it (e.g., uniform_mass, lda_binning, raw_lda)
+        if self.postprocessor_name in ["uniform_mass", "lda_binning", "raw_lda"] and self.val_loader is not None:
             if self.verbose:
                 print("Collecting values on test data")
             self.get_values(self.val_loader, name="test")
@@ -1347,6 +1466,16 @@ class HyperparamsSearch(EvaluatorAblation):
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
                 # LDA binning saves all results in search_lda_binning, return early
+                return
+            elif self.postprocessor_name == "raw_lda":
+                if self.verbose:
+                    print("Performing raw LDA search: fit LDA on res, eval on all splits")
+                t0 = time.time()
+                self.search_raw_lda()
+                t1 = time.time()
+                if self.verbose:
+                    print(f"Total time: {t1 - t0:.2f} seconds")
+                # Raw LDA saves all results in search_raw_lda, return early
                 return
             elif self.postprocessor_name == "partition":
                 if self.verbose:

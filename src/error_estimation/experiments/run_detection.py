@@ -958,9 +958,9 @@ def run(args: argparse.Namespace) -> None:
                 root_dir=args.root_dir,
             )
 
-            # For lda_binning, load per-score hyperparameters from previous runs
+            # For lda_binning and raw_lda, load per-score hyperparameters from previous runs
             lda_score_meta = None
-            if cfg_detection_run.get("name") == "lda_binning":
+            if cfg_detection_run.get("name") in ("lda_binning", "raw_lda"):
                 lda_score_meta = _apply_lda_score_selections(
                     cfg_detection=cfg_detection_run,
                     data_cfg=data_cfg,

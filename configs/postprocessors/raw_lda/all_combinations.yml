@@ -1,0 +1,43 @@
+name: raw_lda
+
+postprocessor_args:
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  base_scores: ["gini", "margin"]
+  score_configs: {}
+
+experience_args:
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+  # Load per-score hyperparameters from previous doctor/margin/odin runs
+  # These should be run first with --mode search_res to get best hyperparams per seed
+  score_sources:
+    gini:
+      postprocessor: doctor
+      run_tag: null  # Uses most recent run
+      select_on: res
+    margin:
+      postprocessor: margin
+      run_tag: null
+      select_on: res
+    msp:
+      postprocessor: odin
+      run_tag: null
+      select_on: res
+
+# Grid over different score combinations
+postprocessor_grid:
+  base_scores:
+    - ["gini"]
+    - ["margin"]
+    - ["msp"]
+    - ["gini", "margin"]
+    - ["gini", "msp"]
+    - ["margin", "msp"]
+    - ["gini", "margin", "msp"]
