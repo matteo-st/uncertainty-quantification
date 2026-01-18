@@ -34,32 +34,36 @@ The script loaded hyperparameters only from `seed-split-1` directory for ALL see
 
 ---
 
-## Issue #2: Uniform Mass Binning Report Shows Only Seed-1 Hyperparameters
+## Issue #2: Report Sections Lack Clarity on Per-Seed Hyperparameter Selection
 
 **Date Identified:** 2026-01-18
 
-**File:** `docs/experimental_procedure_report.md` - Section "Experiment: Uniform Mass Binning"
+**File:** `docs/experimental_procedure_report.md` - Multiple sections
 
 **Problem:**
-The report states single hyperparameters per dataset/model as if they apply to all seeds:
-> "Selected Doctor hyperparameters (from res split):
-> - CIFAR-10 ResNet-34: temperature=1.2, normalize=True, magnitude=0.002"
+Multiple sections stated hyperparameters as single values or used vague language like "selected on res split" without clarifying that selection is done **per-seed**. This could mislead readers into thinking hyperparameters are fixed across all seeds.
 
-But the actual experiments used **different hyperparameters per seed**:
+**Affected Sections:**
+1. "Experiment: Uniform Mass Binning" - listed single hyperparameters per dataset/model
+2. "Isotonic Regression Calibration (9 seeds)" - vague "selected on res split"
+3. "Isotonic Regression with Bin Splitting (9 seeds)" - vague "selected on res split"
+4. "Experiment: K-means Partition Binning (9 seeds)" - vague "selected on res split"
+5. "8. LDA Binning" - per-score hyperparameters not marked as per-seed
+
+**Actual Behavior (correct):**
+Hyperparameters vary across seeds. Example CIFAR-10 ResNet-34:
 - Seed 1: temperature=1.2, magnitude=0.002
 - Seed 2: temperature=0.8, magnitude=0.004
 - Seed 3: temperature=0.7, magnitude=0.004
 
-**Type:** Reporting inconsistency (experiments were correct, report was misleading)
-
-**Impact:**
-- Report suggests fixed hyperparameters across all seeds
-- Readers might incorrectly assume hyperparameters don't vary per seed
-- Inconsistent with proper per-seed hyperparameter selection methodology
+**Type:** Reporting inconsistency (experiments were correct, report was unclear)
 
 **Fix Applied:**
-- Updated report to clarify that hyperparameters are selected per-seed on res split
-- Changed specific values to ranges (e.g., "Temperature: 0.7 to 1.2 depending on seed")
+- Added "**per-seed**" emphasis to all affected sections
+- Uniform Mass: Changed specific values to ranges
+- Isotonic: Added "(hyperparameters vary across seeds, e.g., temperature 0.7-1.2)"
+- K-means: Added "**per-seed** by FPR@95 on each res split"
+- LDA Binning: Added "(per-seed)" to each score source
 
 **Status:** Fixed
 

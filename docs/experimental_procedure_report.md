@@ -820,7 +820,7 @@ Plots:
 - **Models:** ResNet-34, DenseNet-121
 - **Splits:** n_res=1000, n_cal=4000, n_test=5000
 - **Seeds:** 1-9 (mean ± std reported)
-- **Base score:** Doctor (gini) with hyperparameters selected on res split by FPR@95
+- **Base score:** Doctor (gini) with hyperparameters selected **per-seed** on res split by FPR@95
 - **Partition method:** K-means clustering on CDF-transformed scores
 - **Grid:** n_clusters ∈ {5, 10, 20, 30, 50, 75, 100, 150, 200, 300}, alpha ∈ {0.05, 0.1, 0.5}, score ∈ {mean, upper}
 
@@ -834,7 +834,7 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 
 ### Protocol
 
-1. **Doctor hyperparameter search on res:** Find best (temperature, magnitude, normalize) by FPR@95 on res split
+1. **Doctor hyperparameter search on res:** Find best (temperature, magnitude, normalize) **per-seed** by FPR@95 on each res split
 2. **Partition fitting on res:** Fit K-means clustering on CDF(doctor_score) using res split
 3. **Binning/counting on cal:** Compute bin error rates and confidence intervals on cal split
 4. **Evaluation on test:** Report final metrics on held-out test split
@@ -969,7 +969,7 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 
 **Setup:**
 - Fit isotonic regression on cal data to map gini scores → calibrated error probabilities
-- Doctor hyperparameters (temperature, magnitude, normalize) selected on res split using FPR@95
+- Doctor hyperparameters (temperature, magnitude, normalize) selected **per-seed** on each res split using FPR@95 (hyperparameters vary across seeds, e.g., CIFAR-10 ResNet-34: temperature 0.7-1.2, magnitude 0.002-0.004)
 - Evaluate calibrated probabilities on test set
 - All experiments use `--logits-dtype float64`
 
@@ -1037,7 +1037,7 @@ The partition postprocessor outputs a binned score. Four distinct methods are ev
 **Configuration:**
 - n_min grid: [20, 30, 50, 75, 100] (selected by CV on cal)
 - n_max: 200 (fixed)
-- Doctor hyperparameters selected on res split using FPR@95
+- Doctor hyperparameters selected **per-seed** on each res split using FPR@95
 
 **Source:** `results/<dataset>/<model>_ce/isotonic_splitting/runs/isotonic-splitting-cal-fit-doctor-allseeds-20260117/`
 
@@ -1243,10 +1243,10 @@ LDA binning combines multiple uncertainty scores through supervised dimensionali
 4. **Probability estimation:** Compute error rate per bin on calibration data
 5. **Evaluation:** Apply to test set
 
-**Per-score hyperparameter selection:** Best hyperparameters for each score (temperature, magnitude) are loaded from previous grid searches on res split:
-- Gini: from Doctor grid search
-- Margin: from Margin grid search
-- MSP: from ODIN grid search
+**Per-score hyperparameter selection:** Best hyperparameters for each score (temperature, magnitude) are loaded **per-seed** from previous grid searches on each res split:
+- Gini: from Doctor grid search (per-seed)
+- Margin: from Margin grid search (per-seed)
+- MSP: from ODIN grid search (per-seed)
 
 **Grid search:**
 - n_bins ∈ {5, 10, 15, 20, 30}
