@@ -1,0 +1,54 @@
+# Raw LDA score combinations for score combination experiments
+# Use with score_combination dataset configs (res=0, cal=5000, test=5000)
+# Run AFTER individual score grids have been evaluated
+# Run with: --mode eval_grid --eval-grid --results-family score_combination
+
+name: raw_lda
+
+postprocessor_args:
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  base_scores: ["gini", "margin"]
+  score_configs: {}
+
+experience_args:
+  n_epochs:
+    res: null
+    cal: 1
+  transform:
+    res: null
+    cal: test
+
+  # Load per-score hyperparameters from score_combination family runs
+  # Selection is based on cal split (since res=0)
+  score_selections:
+    gini:
+      postprocessor: doctor
+      root_dir: results/score_combination  # Point to score_combination family
+      run_tag_prefix: "doctor-grid-"  # Matches run tag pattern
+      metric: fpr
+      split: cal  # Select based on cal split performance
+    margin:
+      postprocessor: margin
+      root_dir: results/score_combination
+      run_tag_prefix: "margin-grid-"
+      metric: fpr
+      split: cal
+    msp:
+      postprocessor: odin
+      root_dir: results/score_combination
+      run_tag_prefix: "odin-grid-"
+      metric: fpr
+      split: cal
+
+# Grid over different score combinations
+postprocessor_grid:
+  base_scores:
+    - ["gini"]
+    - ["margin"]
+    - ["msp"]
+    - ["gini", "margin"]
+    - ["gini", "msp"]
+    - ["margin", "msp"]
+    - ["gini", "margin", "msp"]

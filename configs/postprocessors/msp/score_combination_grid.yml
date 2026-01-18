@@ -1,0 +1,19 @@
+# ODIN (MSP) score grid search for score combination experiments
+# Use with score_combination dataset configs (res=0, cal=5000, test=5000)
+# Run with: --mode eval_grid --eval-grid --results-family score_combination
+
+name: odin
+postprocessor_args:
+  temperature: 1.0
+  magnitude: 0.0
+experience_args:
+  n_folds: null
+  n_epochs:
+    res: null
+    cal: 1
+  transform:
+    res: null
+    cal: test
+postprocessor_grid:
+  temperature: [0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
+  magnitude: [0.0, 0.002, 0.004, 0.006, 0.008, 0.01, 0.012]

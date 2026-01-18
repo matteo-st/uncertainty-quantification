@@ -284,22 +284,28 @@ def _apply_lda_score_selections(
             )
 
             search_path = runs_root / run_tag / f"seed-split-{seed_split}" / "search.jsonl"
-            if not search_path.exists():
+            grid_path = runs_root / run_tag / f"seed-split-{seed_split}" / "grid_results.csv"
+
+            if search_path.exists():
+                results = pd.read_json(search_path, lines=True)
+                source_file = search_path
+            elif grid_path.exists():
+                results = pd.read_csv(grid_path)
+                source_file = grid_path
+            else:
                 logger.warning(
-                    f"Score selection results for '{score_name}' not found at {search_path}. "
-                    f"Using default hyperparameters for this score."
+                    f"Score selection results for '{score_name}' not found at {search_path} "
+                    f"or {grid_path}. Using default hyperparameters for this score."
                 )
                 meta[f"score_selection_{score_name}_status"] = "not_found"
                 continue
-
-            results = pd.read_json(search_path, lines=True)
             metric = selection_cfg.get("metric", "fpr")
             split = selection_cfg.get("split", "res")
             metric_key = f"{metric}_{split}"
 
             if metric_key not in results.columns:
                 logger.warning(
-                    f"Metric '{metric_key}' not found in {search_path}. "
+                    f"Metric '{metric_key}' not found in {source_file}. "
                     f"Using default hyperparameters for '{score_name}'."
                 )
                 meta[f"score_selection_{score_name}_status"] = "metric_not_found"
@@ -309,7 +315,7 @@ def _apply_lda_score_selections(
             values = pd.to_numeric(results[metric_key], errors="coerce")
             if not values.notna().any():
                 logger.warning(
-                    f"No valid values for '{metric_key}' in {search_path}. "
+                    f"No valid values for '{metric_key}' in {source_file}. "
                     f"Using default hyperparameters for '{score_name}'."
                 )
                 meta[f"score_selection_{score_name}_status"] = "no_valid_values"
@@ -327,7 +333,7 @@ def _apply_lda_score_selections(
             score_configs[score_name] = score_config
             meta[f"score_selection_{score_name}_source"] = source_name
             meta[f"score_selection_{score_name}_run_tag"] = run_tag
-            meta[f"score_selection_{score_name}_search_path"] = str(search_path)
+            meta[f"score_selection_{score_name}_source_file"] = str(source_file)
             meta[f"score_selection_{score_name}_config"] = score_config
             logger.info(f"Loaded hyperparameters for '{score_name}': {score_config}")
 
@@ -833,6 +839,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="float32",
         help="Precision for logits storage and computation (default: float32)",
     )
+    parser.add_argument(
+        "--results-family",
+        "--results_family",
+        dest="results_family",
+        type=str,
+        default=None,
+        help="Override results family folder (e.g., 'score_combination')",
+    )
     return parser
 
 
@@ -848,7 +862,7 @@ def run(args: argparse.Namespace) -> None:
         if key not in detection_cfg["experience_args"]:
             raise KeyError(f"Missing detection.experience_args.{key}")
 
-    results_root = build_results_root(args.root_dir, data_cfg, model_cfg, detection_cfg)
+    results_root = build_results_root(args.root_dir, data_cfg, model_cfg, detection_cfg, family=args.results_family)
     run_tag = args.run_tag or default_run_tag()
     run_root = results_root / "runs" / run_tag
     ensure_dir(run_root)
