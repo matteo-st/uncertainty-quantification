@@ -34,6 +34,37 @@ The script loaded hyperparameters only from `seed-split-1` directory for ALL see
 
 ---
 
+## Issue #2: Uniform Mass Binning Report Shows Only Seed-1 Hyperparameters
+
+**Date Identified:** 2026-01-18
+
+**File:** `docs/experimental_procedure_report.md` - Section "Experiment: Uniform Mass Binning"
+
+**Problem:**
+The report states single hyperparameters per dataset/model as if they apply to all seeds:
+> "Selected Doctor hyperparameters (from res split):
+> - CIFAR-10 ResNet-34: temperature=1.2, normalize=True, magnitude=0.002"
+
+But the actual experiments used **different hyperparameters per seed**:
+- Seed 1: temperature=1.2, magnitude=0.002
+- Seed 2: temperature=0.8, magnitude=0.004
+- Seed 3: temperature=0.7, magnitude=0.004
+
+**Type:** Reporting inconsistency (experiments were correct, report was misleading)
+
+**Impact:**
+- Report suggests fixed hyperparameters across all seeds
+- Readers might incorrectly assume hyperparameters don't vary per seed
+- Inconsistent with proper per-seed hyperparameter selection methodology
+
+**Fix Applied:**
+- Updated report to clarify that hyperparameters are selected per-seed on res split
+- Changed specific values to ranges (e.g., "Temperature: 0.7 to 1.2 depending on seed")
+
+**Status:** Fixed
+
+---
+
 ## Best Practices to Prevent Future Inconsistencies
 
 1. **Per-seed hyperparameter selection is mandatory** - Hyperparameters must be selected independently for each seed on its res split, never shared across seeds.

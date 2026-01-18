@@ -1140,11 +1140,10 @@ Uniform mass binning differs from uniform width binning in that bin boundaries a
 
 **Note:** No cross-validation on cal to preserve guarantees (partition and counting use same data). All n_bins values are reported for oracle/deterministic rule analysis.
 
-**Selected Doctor hyperparameters (from res split):**
-- CIFAR-10 ResNet-34: temperature=1.2, normalize=True, magnitude=0.002
-- CIFAR-10 DenseNet-121: temperature=0.7, normalize=True, magnitude=0.002
-- CIFAR-100 ResNet-34: temperature=0.9, normalize=True, magnitude=0.002
-- CIFAR-100 DenseNet-121: temperature=0.7, normalize=True, magnitude=0.0
+**Doctor hyperparameters:** Selected **per-seed** on each res split (best ROC-AUC on res). Hyperparameters vary across seeds. Example ranges from CIFAR-10 ResNet-34:
+- Temperature: 0.7 to 1.2 depending on seed
+- Magnitude: 0.002 to 0.004 depending on seed
+- Normalize: True (all seeds)
 
 ### Results: FPR by n_bins
 
