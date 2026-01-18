@@ -106,6 +106,81 @@ Values were **manually typed/transcribed** instead of being programmatically ext
 
 ---
 
+## Issue #4: Raw LDA Evaluation Missing ODIN Input Perturbation
+
+**Date Identified:** 2026-01-18
+
+**File:** `scripts/run_raw_lda_evaluation.py`
+
+**Problem:**
+The `compute_gini_score()`, `compute_margin_score()`, and `compute_msp_score()` functions accept a `magnitude` parameter but **never use it**. The magnitude parameter is for ODIN-style input perturbation, which significantly affects score quality.
+
+**Evidence:**
+```python
+def compute_gini_score(logits, temperature=1.0, magnitude=0.0, normalize=True):
+    """Compute Gini impurity score (Doctor score)."""
+    scaled_logits = logits / temperature  # Uses temperature
+    probs = torch.softmax(scaled_logits, dim=-1)
+    # magnitude is NEVER USED - no gradient-based perturbation applied!
+```
+
+**Impact:**
+- Raw LDA gini seed 1 with T=1.2, mag=0.002: **fpr_test=0.4349** (no perturbation)
+- Doctor-eval grid T=1.2, mag=0.002: **fpr_test=0.2335** (with perturbation)
+- This is a ~2x difference in FPR due to missing perturbation
+- Results are **not comparable** with Doctor baseline
+
+**Root Cause:**
+The ODIN perturbation requires:
+1. Forward pass to compute loss
+2. Backward pass to get input gradients
+3. Perturb inputs in gradient direction
+4. Second forward pass with perturbed inputs
+
+The raw LDA script only does a single forward pass without gradient computation, making perturbation impossible with its current design.
+
+**Fix Required:**
+**Recommended approach:** Refactor `run_raw_lda_evaluation.py` to use the existing postprocessor implementations from `error_estimation.utils.postprocessors` instead of reimplementing score computation. This follows the code reuse principle documented in CLAUDE.md.
+
+Alternative: Extend `run_detection.py` to support raw LDA evaluation as a new mode, avoiding the need for a separate script entirely.
+
+**Status:** Not yet fixed - requires refactoring to use main codebase functions
+
+---
+
+## Issue #5: [RECLASSIFIED - NOT AN ISSUE] eval-grid Mode Selects by fpr_cal
+
+**Date Identified:** 2026-01-18
+
+**Date Reclassified:** 2026-01-18
+
+**File:** `src/error_estimation/utils/results_io.py` - `select_best_row()` function
+
+**Initial Concern:**
+The `select_best_row()` function selects by `fpr_cal` when res column is not available, causing doctor-eval-grid to select different hyperparameters than doctor-res-grid.
+
+**Evidence:**
+- doctor-res-grid seed 1: selected **T=1.2** (best fpr_res)
+- doctor-eval-grid seed 1: selected **T=0.8** (best fpr_cal)
+
+**Why This Is Actually Correct:**
+
+This behavior is **intentional** for the experimental design:
+
+1. **Binning methods** use res split (1k samples) for hyperparameter selection, then fit on cal (4k samples)
+
+2. **Raw score "full power" baseline** uses cal split (4k samples) for hyperparameter selection to show what's achievable when the raw score has access to the same amount of labeled data as binning methods
+
+3. This enables a **fair comparison**: both approaches have access to the same calibration data. The "full power" baseline represents the upper bound of raw score performance with equivalent labeled data.
+
+The different hyperparameters between res-based and cal-based selection are expected and serve different experimental purposes:
+- **res-based (doctor-res-grid):** For methods that must select hyperparameters before seeing cal data (e.g., LDA binning)
+- **cal-based (doctor-eval-grid):** For "full power" raw score baseline comparison
+
+**Status:** Reclassified as intended behavior, not an issue
+
+---
+
 ## Best Practices to Prevent Future Inconsistencies
 
 1. **Per-seed hyperparameter selection is mandatory** - Hyperparameters must be selected independently for each seed on its res split, never shared across seeds.
@@ -121,3 +196,9 @@ Values were **manually typed/transcribed** instead of being programmatically ext
 6. **Sort by modification time, not name** - When finding "most recent" directories, use `stat().st_mtime` not alphabetical sorting.
 
 7. **Use consistent precision** - All baseline values should use the same decimal precision across all sections (prefer 4-decimal for metrics like ROC-AUC, FPR). When the same value appears in multiple sections, use identical formatting.
+
+8. **Verify all parameters are used** - When implementing score functions with hyperparameters, verify each parameter is actually applied. If a function accepts `magnitude` for ODIN perturbation, it must actually apply the perturbation.
+
+9. **Document selection split choice** - When selecting hyperparameters, clearly document which split is used (res or cal) and why. Different experiments may intentionally use different splits (e.g., res-based for binning methods, cal-based for "full power" raw score baselines).
+
+10. **Test score computation against reference** - When implementing score computation, verify outputs match the reference implementation (e.g., Doctor postprocessor) on the same inputs before running full experiments.
