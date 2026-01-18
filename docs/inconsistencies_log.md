@@ -69,6 +69,38 @@ Hyperparameters vary across seeds. Example CIFAR-10 ResNet-34:
 
 ---
 
+## Issue #3: Inconsistent Precision and Incorrect Std Values for Doctor Baseline
+
+**Date Identified:** 2026-01-18
+
+**File:** `docs/experimental_procedure_report.md` - Multiple sections
+
+**Problem:**
+1. **Inconsistent precision:** Some sections used 3-decimal places (0.930 ± 0.011), others used 4-decimal (0.9297 ± 0.0108) for the same values
+2. **Incorrect std values:** K-means section had different std values than actual computed values
+
+**Examples:**
+- Isotonic section: FPR=0.1982 ± 0.0166, ROC-AUC=0.9297 ± 0.0108 (correct)
+- Uniform Mass section: FPR=0.198 ± 0.017, ROC-AUC=0.930 ± 0.011 (rounded but inconsistent)
+- K-means section: FPR=0.1982 ± 0.0176, ROC-AUC=0.9297 ± 0.0115 (incorrect std)
+
+**Correct values (from doctor-eval runs):**
+| Dataset | Model | FPR (test) | ROC-AUC (test) |
+|---------|-------|------------|----------------|
+| CIFAR-10 | ResNet-34 | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+| CIFAR-10 | DenseNet-121 | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+| CIFAR-100 | ResNet-34 | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+| CIFAR-100 | DenseNet-121 | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+
+**Fix Applied:**
+- Standardized all Doctor baseline values to 4-decimal precision
+- Fixed K-means section std values to match actual computed values
+- Updated: Uniform Mass section, Selection Rule Analysis, LDA Binning comparison
+
+**Status:** Fixed
+
+---
+
 ## Best Practices to Prevent Future Inconsistencies
 
 1. **Per-seed hyperparameter selection is mandatory** - Hyperparameters must be selected independently for each seed on its res split, never shared across seeds.
@@ -82,3 +114,5 @@ Hyperparameters vary across seeds. Example CIFAR-10 ResNet-34:
 5. **Test locally before pushing** - Run scripts with limited scope locally to catch import/logic errors before server runs.
 
 6. **Sort by modification time, not name** - When finding "most recent" directories, use `stat().st_mtime` not alphabetical sorting.
+
+7. **Use consistent precision** - All baseline values should use the same decimal precision across all sections (prefer 4-decimal for metrics like ROC-AUC, FPR). When the same value appears in multiple sections, use identical formatting.
