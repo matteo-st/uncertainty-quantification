@@ -1255,65 +1255,112 @@ LDA binning combines multiple uncertainty scores through supervised dimensionali
 - score_type ∈ {mean, upper}
 - base_scores combinations: [gini,margin], [gini,msp], [gini,margin,msp], [gini,margin,entropy]
 
-### Results: FPR by Score Combination
+### 8.1 Ranking Power: LDA Combined Score vs Individual Scores (ROC-AUC)
 
-**CIFAR-10 ResNet-34**
-| Score Combination | FPR Cal | FPR Test |
-|-------------------|---------|----------|
-| gini, margin | 0.317 | 0.462 ± 0.118 |
-| gini, msp | 0.311 | 0.483 ± 0.123 |
-| gini, margin, msp | 0.352 | 0.530 ± 0.137 |
-| gini, margin, entropy | 0.354 | 0.616 ± 0.131 |
+Before examining binning performance, we first assess whether LDA combination improves ranking power over individual scores. ROC-AUC measures ranking quality independent of calibration.
 
-**CIFAR-10 DenseNet-121**
-| Score Combination | FPR Cal | FPR Test |
-|-------------------|---------|----------|
-| gini, margin | 0.322 | 0.391 ± 0.036 |
-| gini, msp | 0.327 | 0.388 ± 0.034 |
-| gini, margin, msp | 0.333 | 0.405 ± 0.043 |
-| gini, margin, entropy | 0.350 | 0.420 ± 0.090 |
+**Individual Score Baselines (gini with best hyperparams):**
 
-**CIFAR-100 ResNet-34**
-| Score Combination | FPR Cal | FPR Test |
-|-------------------|---------|----------|
-| gini, margin | 0.418 | 0.459 ± 0.025 |
-| gini, msp | 0.422 | 0.460 ± 0.020 |
-| gini, margin, msp | 0.418 | 0.464 ± 0.018 |
-| gini, margin, entropy | 0.448 | 0.477 ± 0.020 |
+| Dataset | Model | Gini ROC-AUC Test |
+|---------|-------|-------------------|
+| CIFAR-10 | ResNet-34 | 0.919 ± 0.006 |
+| CIFAR-10 | DenseNet-121 | 0.913 ± 0.005 |
+| CIFAR-100 | ResNet-34 | 0.878 ± 0.005 |
+| CIFAR-100 | DenseNet-121 | 0.855 ± 0.004 |
 
-**CIFAR-100 DenseNet-121**
-| Score Combination | FPR Cal | FPR Test |
-|-------------------|---------|----------|
-| gini, margin | 0.475 | 0.517 ± 0.053 |
-| gini, msp | 0.471 | 0.527 ± 0.051 |
-| gini, margin, msp | 0.480 | 0.529 ± 0.054 |
-| gini, margin, entropy | 0.476 | 0.529 ± 0.054 |
+**LDA Combined Scores (best binning config, averaged over seeds):**
 
-### Comparison with Baselines
+| Dataset | Model | Score Combination | ROC-AUC Test | FPR@95 Test |
+|---------|-------|-------------------|--------------|-------------|
+| CIFAR-10 | ResNet-34 | gini+margin | 0.918 ± 0.009 | 0.354 ± 0.075 |
+| CIFAR-10 | ResNet-34 | gini+msp | 0.915 ± 0.010 | 0.396 ± 0.118 |
+| CIFAR-10 | ResNet-34 | gini+margin+msp | 0.913 ± 0.010 | 0.432 ± 0.093 |
+| CIFAR-10 | ResNet-34 | gini+margin+entropy | 0.913 ± 0.008 | 0.477 ± 0.098 |
+| CIFAR-10 | DenseNet-121 | gini+margin | 0.913 ± 0.005 | 0.354 ± 0.025 |
+| CIFAR-10 | DenseNet-121 | gini+msp | 0.913 ± 0.005 | 0.357 ± 0.016 |
+| CIFAR-10 | DenseNet-121 | gini+margin+msp | 0.909 ± 0.007 | 0.365 ± 0.036 |
+| CIFAR-10 | DenseNet-121 | gini+margin+entropy | 0.911 ± 0.006 | 0.351 ± 0.056 |
+| CIFAR-100 | ResNet-34 | gini+margin | 0.878 ± 0.004 | 0.418 ± 0.020 |
+| CIFAR-100 | ResNet-34 | gini+msp | 0.878 ± 0.004 | 0.421 ± 0.014 |
+| CIFAR-100 | ResNet-34 | gini+margin+msp | 0.878 ± 0.005 | 0.422 ± 0.010 |
+| CIFAR-100 | ResNet-34 | gini+margin+entropy | 0.873 ± 0.005 | 0.445 ± 0.031 |
+| CIFAR-100 | DenseNet-121 | gini+margin | 0.852 ± 0.004 | 0.483 ± 0.019 |
+| CIFAR-100 | DenseNet-121 | gini+msp | 0.854 ± 0.004 | 0.482 ± 0.023 |
+| CIFAR-100 | DenseNet-121 | gini+margin+msp | 0.853 ± 0.004 | 0.490 ± 0.024 |
+| CIFAR-100 | DenseNet-121 | gini+margin+entropy | 0.856 ± 0.003 | 0.485 ± 0.025 |
 
-| Dataset | Model | LDA Binning | Uniform Mass (gini) | Doctor (raw) |
-|---------|-------|-------------|---------------------|--------------|
-| CIFAR10 | resnet34 | 0.462 ± 0.118 | **0.350 ± 0.062** | **0.198 ± 0.017** |
-| CIFAR10 | densenet121 | 0.388 ± 0.034 | **0.349 ± 0.024** | **0.265 ± 0.022** |
-| CIFAR100 | resnet34 | 0.459 ± 0.025 | **0.419 ± 0.012** | **0.395 ± 0.018** |
-| CIFAR100 | densenet121 | 0.517 ± 0.053 | **0.486 ± 0.026** | **0.461 ± 0.014** |
+**Key Finding:** LDA combined scores show **no improvement in ROC-AUC** over single-score gini. The differences are within noise (< 0.01). This indicates that combining multiple softmax-derived scores via LDA does not improve ranking power.
 
-### LDA Binning Observations
+### 8.2 Effect of Binning Configuration
 
-1. **No improvement from score combination:** Contrary to our hypothesis, combining multiple scores via LDA does not improve FPR compared to single-score uniform mass binning. In all cases, LDA binning performs worse.
+We analyze how different binning parameters affect performance.
 
-2. **Two-score combinations best:** Among LDA variants, simpler two-score combinations (gini+margin, gini+msp) outperform three-score combinations. Adding entropy degrades performance.
+#### 8.2.1 Score Type: Mean vs Upper Confidence Bound
 
-3. **LDA projection may overfit:** The supervised LDA projection, fit on res split, may not generalize well to cal/test. The projection optimizes for res split error separation but this may not transfer.
+| Dataset | Model | Score Type | Best FPR@95 Test |
+|---------|-------|------------|------------------|
+| CIFAR-10 | ResNet-34 | mean | 0.433 |
+| CIFAR-10 | ResNet-34 | upper (α=0.05) | 0.434 |
+| CIFAR-10 | DenseNet-121 | mean | 0.368 |
+| CIFAR-10 | DenseNet-121 | upper (α=0.05) | 0.368 |
+| CIFAR-100 | ResNet-34 | mean | 0.427 |
+| CIFAR-100 | ResNet-34 | upper (α=0.05) | 0.427 |
+| CIFAR-100 | DenseNet-121 | mean | 0.483 |
+| CIFAR-100 | DenseNet-121 | upper (α=0.05) | 0.483 |
 
-4. **Binning dominates performance:** The binning step (uniform mass on 1D projected score) introduces the same discretization issues as single-score uniform mass. LDA projection doesn't address the fundamental threshold transfer problem.
+**Key Finding:** Score type (mean vs upper) shows **no significant difference**. The Hoeffding/Bernstein upper bound does not improve calibration.
 
-5. **Higher variance:** LDA binning shows higher variance than single-score methods (especially on CIFAR-10 ResNet-34: std=0.118 vs 0.062), suggesting the multi-score approach is less stable.
+#### 8.2.2 Alpha (Confidence Level for Upper Bound)
 
-6. **Redundant information:** Gini, margin, and MSP are all derived from softmax probabilities and are highly correlated. LDA may not find orthogonal discriminative directions.
+For score_type=upper, varying α ∈ {0.05, 0.1, 0.5}:
 
-### Conclusion
+| Dataset | Model | α=0.05 FPR | α=0.1 FPR | α=0.5 FPR |
+|---------|-------|------------|-----------|-----------|
+| CIFAR-10 | ResNet-34 | 0.434 | 0.434 | 0.434 |
+| CIFAR-10 | DenseNet-121 | 0.368 | 0.368 | 0.368 |
+| CIFAR-100 | ResNet-34 | 0.427 | 0.427 | 0.427 |
+| CIFAR-100 | DenseNet-121 | 0.483 | 0.483 | 0.483 |
 
-LDA-based multi-score combination fails to improve over simpler single-score methods. The approach adds complexity (LDA fitting, per-score hyperparameter selection) without performance gains. The fundamental issues of binning methods—threshold transfer and discretization loss—are not addressed by score combination.
+**Key Finding:** Alpha has **negligible effect**. The upper confidence bound approach doesn't meaningfully improve threshold transfer.
 
-**Recommendation:** Use single-score methods (Doctor raw or uniform mass with gini) rather than multi-score LDA combination.
+#### 8.2.3 Number of Bins (K)
+
+Best K selection varies by configuration:
+
+| Dataset | Model | Score Combination | Best K | FPR@95 Test | ROC-AUC Test |
+|---------|-------|-------------------|--------|-------------|--------------|
+| CIFAR-10 | ResNet-34 | gini+margin | 15 | 0.434 | 0.917 |
+| CIFAR-10 | DenseNet-121 | gini+margin | 5 | 0.368 | 0.878 |
+| CIFAR-100 | ResNet-34 | gini+margin | 30 | 0.434 | 0.877 |
+| CIFAR-100 | DenseNet-121 | gini+margin | 30 | 0.488 | 0.850 |
+
+**Key Finding:** Optimal K varies across datasets/models. Smaller K (5) works better for CIFAR-10 DenseNet-121, while larger K (30) is better for CIFAR-100. This suggests K selection is data-dependent and doesn't generalize.
+
+### 8.3 Comparison with Baselines (FPR@95 Test)
+
+| Dataset | Model | LDA Binning (best) | Uniform Mass (gini) | Doctor (raw) |
+|---------|-------|-------------------|---------------------|--------------|
+| CIFAR-10 | ResNet-34 | 0.354 ± 0.075 | **0.350 ± 0.062** | **0.198 ± 0.017** |
+| CIFAR-10 | DenseNet-121 | 0.351 ± 0.056 | **0.349 ± 0.024** | **0.265 ± 0.022** |
+| CIFAR-100 | ResNet-34 | 0.418 ± 0.020 | **0.419 ± 0.012** | **0.395 ± 0.018** |
+| CIFAR-100 | DenseNet-121 | 0.482 ± 0.023 | **0.486 ± 0.026** | **0.461 ± 0.014** |
+
+### 8.4 LDA Binning Observations
+
+1. **No improvement in ranking power (ROC-AUC):** LDA combination of multiple scores does not improve ROC-AUC over single gini score. The scores (gini, margin, msp) are derived from the same softmax distribution and contain redundant information.
+
+2. **No improvement in calibration (FPR):** LDA binning achieves similar or slightly worse FPR compared to single-score uniform mass binning. The added complexity provides no benefit.
+
+3. **Configuration parameters don't matter:** Score type (mean vs upper), alpha, and n_bins show minimal effect. This suggests the binning approach itself is the limiting factor, not the specific parameters.
+
+4. **Higher variance:** LDA binning shows higher variance than single-score methods (e.g., CIFAR-10 ResNet-34: std=0.075 vs 0.062), indicating less stable behavior.
+
+5. **Two-score combinations slightly better:** Among LDA variants, two-score combinations (gini+margin, gini+msp) marginally outperform three-score combinations. Adding more scores doesn't help.
+
+6. **LDA projection doesn't address threshold transfer:** The fundamental issue is that thresholds learned on calibration data don't transfer to test data. LDA projection doesn't solve this problem.
+
+### 8.5 Conclusion
+
+LDA-based multi-score combination fails to improve over simpler single-score methods. Neither ranking power (ROC-AUC) nor calibration (FPR) improves. The scores being combined are highly correlated, limiting LDA's ability to find discriminative projections.
+
+**Recommendation:** Use single-score methods (Doctor raw or uniform mass with gini) rather than multi-score LDA combination. The added complexity of LDA fitting and per-score hyperparameter selection provides no benefit.
