@@ -92,14 +92,19 @@ def compute_entropy_score(logits, temperature=1.0):
     return entropy.cpu().numpy()
 
 
-def load_score_configs(results_dir, dataset, model):
-    """Load best hyperparams for each score from LDA binning results."""
+def load_score_configs(results_dir, dataset, model, seed_split):
+    """Load best hyperparams for each score from LDA binning results (per-seed)."""
     configs = {}
     lda_path = results_dir / dataset / model / "lda_binning" / "runs"
     if lda_path.exists():
-        runs = sorted([d for d in lda_path.iterdir() if d.is_dir()], reverse=True)
+        # Sort by modification time (most recent first)
+        runs = sorted(
+            [d for d in lda_path.iterdir() if d.is_dir()],
+            key=lambda d: d.stat().st_mtime,
+            reverse=True
+        )
         if runs:
-            seed_dir = runs[0] / "seed-split-1"
+            seed_dir = runs[0] / f"seed-split-{seed_split}"
             search_file = seed_dir / "search.jsonl"
             if search_file.exists():
                 with open(search_file) as f:
@@ -109,7 +114,7 @@ def load_score_configs(results_dir, dataset, model):
                             if "score_configs" in record:
                                 configs = record["score_configs"]
                                 break
-    # Defaults
+    # Defaults if not found
     if "gini" not in configs:
         configs["gini"] = {"temperature": 1.0, "magnitude": 0.0, "normalize": True}
     if "margin" not in configs:
@@ -240,10 +245,6 @@ def main():
         cfg_dataset = Config(config["dataset_cfg"])
         cfg_model = Config(config["model_cfg"])
 
-        # Load score configs from previous grids
-        score_configs = load_score_configs(results_dir, dataset_name, model_name)
-        print(f"Score configs: {score_configs}")
-
         # Load model once
         model = get_model(
             model_name=cfg_model["model_name"],
@@ -258,6 +259,11 @@ def main():
             p.requires_grad_(False)
 
         for seed_split in tqdm(args.seed_splits, desc="Seeds"):
+            # Load per-seed score configs from previous grids
+            score_configs = load_score_configs(results_dir, dataset_name, model_name, seed_split)
+            print(f"  Seed {seed_split} configs: gini T={score_configs['gini'].get('temperature')}, "
+                  f"margin T={score_configs['margin'].get('temperature')}")
+
             # Load dataset and create dataloaders
             dataset = get_dataset(
                 dataset_name=cfg_dataset["name"],
@@ -304,6 +310,7 @@ def main():
                     "seed_split": seed_split,
                     "score_type": "individual",
                     "base_scores": score_name,
+                    "score_config": score_configs.get(score_name, {}),
                     "fpr_res": res_metrics["fpr"],
                     "roc_auc_res": res_metrics["roc_auc"],
                     "fpr_cal": cal_metrics["fpr"],
