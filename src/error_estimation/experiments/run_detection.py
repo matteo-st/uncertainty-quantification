@@ -228,6 +228,125 @@ def _apply_raw_score_selection(
     }
 
 
+def _apply_lda_score_selections(
+    *,
+    cfg_detection: Config,
+    data_cfg: Config,
+    model_cfg: Config,
+    seed_split: int,
+    root_dir: str | Path,
+) -> dict | None:
+    """
+    Load best hyperparameters for each score type used in LDA binning.
+
+    Similar to _apply_raw_score_selection, but loads configs for multiple scores.
+    Each score can have its own source postprocessor and selection criteria.
+    If a score's grid results are not found, it will be skipped (using defaults).
+
+    Config format:
+        experience_args:
+          score_selections:
+            gini:
+              postprocessor: doctor
+              metric: fpr
+              split: res
+              run_tag_prefix: doctor-res-grid-nres{n_res}-
+            margin:
+              postprocessor: margin
+              metric: fpr
+              split: res
+              run_tag_prefix: margin-res-grid-nres{n_res}-
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    score_selections_cfg = cfg_detection.get("experience_args", {}).get("score_selections")
+    if not score_selections_cfg:
+        return None
+
+    n_res = data_cfg.get("n_samples", {}).get("res")
+    score_configs = {}
+    meta = {}
+
+    for score_name, selection_cfg in score_selections_cfg.items():
+        try:
+            source_name = selection_cfg.get("postprocessor", "doctor")
+            source_root = selection_cfg.get("root_dir", root_dir)
+            source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name})
+            runs_root = source_results_root / "runs"
+
+            run_tag = _resolve_raw_score_run_tag(
+                runs_root=runs_root,
+                seed_split=seed_split,
+                selection_cfg=selection_cfg,
+                n_res=n_res,
+                source_name=source_name,
+            )
+
+            search_path = runs_root / run_tag / f"seed-split-{seed_split}" / "search.jsonl"
+            if not search_path.exists():
+                logger.warning(
+                    f"Score selection results for '{score_name}' not found at {search_path}. "
+                    f"Using default hyperparameters for this score."
+                )
+                meta[f"score_selection_{score_name}_status"] = "not_found"
+                continue
+
+            results = pd.read_json(search_path, lines=True)
+            metric = selection_cfg.get("metric", "fpr")
+            split = selection_cfg.get("split", "res")
+            metric_key = f"{metric}_{split}"
+
+            if metric_key not in results.columns:
+                logger.warning(
+                    f"Metric '{metric_key}' not found in {search_path}. "
+                    f"Using default hyperparameters for '{score_name}'."
+                )
+                meta[f"score_selection_{score_name}_status"] = "metric_not_found"
+                continue
+
+            direction = metric_direction(metric)
+            values = pd.to_numeric(results[metric_key], errors="coerce")
+            if not values.notna().any():
+                logger.warning(
+                    f"No valid values for '{metric_key}' in {search_path}. "
+                    f"Using default hyperparameters for '{score_name}'."
+                )
+                meta[f"score_selection_{score_name}_status"] = "no_valid_values"
+                continue
+
+            idx = values.idxmin() if direction == "min" else values.idxmax()
+            best_row = results.loc[idx].to_dict()
+
+            # Extract hyperparams for this score
+            score_config = {}
+            for key in ("temperature", "magnitude", "normalize"):
+                if key in best_row:
+                    score_config[key] = best_row[key]
+
+            score_configs[score_name] = score_config
+            meta[f"score_selection_{score_name}_source"] = source_name
+            meta[f"score_selection_{score_name}_run_tag"] = run_tag
+            meta[f"score_selection_{score_name}_search_path"] = str(search_path)
+            meta[f"score_selection_{score_name}_config"] = score_config
+            logger.info(f"Loaded hyperparameters for '{score_name}': {score_config}")
+
+        except Exception as e:
+            logger.warning(
+                f"Error loading score selection for '{score_name}': {e}. "
+                f"Using default hyperparameters."
+            )
+            meta[f"score_selection_{score_name}_status"] = f"error: {e}"
+
+    # Store score_configs in the detection config
+    if score_configs:
+        if "postprocessor_args" not in cfg_detection:
+            cfg_detection["postprocessor_args"] = {}
+        cfg_detection["postprocessor_args"]["score_configs"] = score_configs
+
+    return meta if meta else None
+
+
 def _resolve_indices(dataset) -> list[int] | None:
     indices = getattr(dataset, "indices", None)
     if indices is None:
@@ -839,6 +958,17 @@ def run(args: argparse.Namespace) -> None:
                 root_dir=args.root_dir,
             )
 
+            # For lda_binning, load per-score hyperparameters from previous runs
+            lda_score_meta = None
+            if cfg_detection_run.get("name") == "lda_binning":
+                lda_score_meta = _apply_lda_score_selections(
+                    cfg_detection=cfg_detection_run,
+                    data_cfg=data_cfg,
+                    model_cfg=model_cfg,
+                    seed_split=seed_split,
+                    root_dir=args.root_dir,
+                )
+
             child_tags = {
                 "seed_split": seed_split,
                 "mode": args.mode,
@@ -917,7 +1047,11 @@ def run(args: argparse.Namespace) -> None:
                     seed_split,
                     mode=args.mode,
                     run_tag=run_tag,
-                    extra={"result_dir": str(run_dir), **(raw_score_meta or {})},
+                    extra={
+                        "result_dir": str(run_dir),
+                        **(raw_score_meta or {}),
+                        **(lda_score_meta or {}),
+                    },
                 )
                 payload = build_metrics_payload(meta, best_row)
                 metrics_path = write_metrics_json(run_dir / "metrics.json", payload)

@@ -26,15 +26,21 @@ class LDABinningPostprocessor(BasePostprocessor):
 
     Combines multiple uncertainty scores using LDA projection,
     then bins using quantiles (uniform mass) and computes error rates.
+
+    Supports per-score hyperparameter configuration via score_configs dict.
     """
 
     def __init__(self, model, cfg, result_folder, device=torch.device('cpu')):
         super().__init__(model, cfg, result_folder, device)
 
-        # Score configuration
-        self.temperature = float(cfg.get("temperature", 1.0))
-        self.normalize = cfg.get("normalize", False)
-        self.magnitude = float(cfg.get("magnitude", 0.0))
+        # Default score configuration (used if per-score config not provided)
+        self.default_temperature = float(cfg.get("temperature", 1.0))
+        self.default_normalize = cfg.get("normalize", False)
+        self.default_magnitude = float(cfg.get("magnitude", 0.0))
+
+        # Per-score configurations: {score_name: {temperature, normalize, magnitude}}
+        # Can be set via set_score_configs() after loading from previous runs
+        self.score_configs = cfg.get("score_configs", {})
 
         # Which scores to combine
         self.base_scores = cfg.get("base_scores", ["gini", "margin"])
@@ -61,19 +67,49 @@ class LDABinningPostprocessor(BasePostprocessor):
         self.bin_counts = []
         self.is_fitted = False
 
+    def set_score_configs(self, score_configs):
+        """
+        Set per-score hyperparameter configurations.
+
+        Args:
+            score_configs: dict mapping score_name to {temperature, normalize, magnitude}
+                Example: {"gini": {"temperature": 1.2, "normalize": True, "magnitude": 0.002},
+                          "margin": {"temperature": 0.8, "normalize": False, "magnitude": 0.0}}
+        """
+        self.score_configs = score_configs
+
+    def _get_score_config(self, score_name):
+        """Get configuration for a specific score, falling back to defaults."""
+        if score_name in self.score_configs:
+            cfg = self.score_configs[score_name]
+            return {
+                "temperature": float(cfg.get("temperature", self.default_temperature)),
+                "normalize": cfg.get("normalize", self.default_normalize),
+                "magnitude": float(cfg.get("magnitude", self.default_magnitude)),
+            }
+        return {
+            "temperature": self.default_temperature,
+            "normalize": self.default_normalize,
+            "magnitude": self.default_magnitude,
+        }
+
     def _compute_single_score(self, logits, score_name):
-        """Compute a single uncertainty score from logits."""
+        """Compute a single uncertainty score from logits using per-score config."""
+        cfg = self._get_score_config(score_name)
+        temperature = cfg["temperature"]
+        normalize = cfg["normalize"]
+
         if score_name == "gini":
-            return gini(logits, temperature=self.temperature, normalize=self.normalize).squeeze()
+            return gini(logits, temperature=temperature, normalize=normalize).squeeze()
         elif score_name == "msp":
-            probs = torch.softmax(logits / self.temperature, dim=1)
+            probs = torch.softmax(logits / temperature, dim=1)
             return -probs.max(dim=1)[0]
         elif score_name == "margin":
-            probs = torch.softmax(logits / self.temperature, dim=1)
+            probs = torch.softmax(logits / temperature, dim=1)
             top2 = probs.topk(2, dim=1)[0]
             return -(top2[:, 0] - top2[:, 1])
         elif score_name == "entropy":
-            probs = torch.softmax(logits / self.temperature, dim=1)
+            probs = torch.softmax(logits / temperature, dim=1)
             entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
             return entropy
         elif score_name == "max_logit":
@@ -246,6 +282,7 @@ class LDABinningPostprocessor(BasePostprocessor):
             "alpha": self.alpha,
             "score_type": self.score_type,
             "base_scores": self.base_scores,
+            "score_configs": self.score_configs,
             "bin_edges": self.bin_edges,
             "bin_error_means": self.bin_error_means,
             "bin_error_uppers": self.bin_error_uppers,

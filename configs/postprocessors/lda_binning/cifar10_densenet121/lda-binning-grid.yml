@@ -17,6 +17,26 @@ experience_args:
   transform:
     res: None
     cal: test
+  # Per-score hyperparameter selection from previous runs on res
+  score_selections:
+    gini:
+      postprocessor: doctor
+      metric: fpr
+      split: res
+      run_tag_prefix: doctor-res-grid-nres{n_res}-
+      root_dir: ./results
+    margin:
+      postprocessor: margin
+      metric: fpr
+      split: res
+      run_tag_prefix: margin-res-grid-nres{n_res}-
+      root_dir: ./results
+    msp:
+      postprocessor: odin
+      metric: fpr
+      split: res
+      run_tag_prefix: odin-res-grid-nres{n_res}-
+      root_dir: ./results
 
 postprocessor_grid:
   alpha: [0.05, 0.1, 0.5]
