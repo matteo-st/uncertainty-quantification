@@ -16,3 +16,4 @@ threadpoolctl
 joblib
 numpy
 torch-uncertainty
+k-means-constrained

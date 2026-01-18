@@ -16,6 +16,12 @@ from error_estimation.utils.clustering.divergences import (
     alpha_divergence_factory,
 )
 
+try:
+    from k_means_constrained import KMeansConstrained
+    HAS_KMEANS_CONSTRAINED = True
+except ImportError:
+    HAS_KMEANS_CONSTRAINED = False
+
 # from sklearn.cluster import KMeans, MiniBatchKMeans
 # from sklearn.mixture import GaussianMixture
 
@@ -150,6 +156,16 @@ class PartitionPostprocessor(BasePostprocessor):
                 device=self.device,
             
             )
+
+        elif self.method == "kmeans-constrained":
+            if not HAS_KMEANS_CONSTRAINED:
+                raise ImportError(
+                    "k-means-constrained package not installed. "
+                    "Install with: pip install k-means-constrained"
+                )
+            # KMeansConstrained will be instantiated in fit_quantizer
+            # since we need n_samples to set size_min/size_max
+            self.clustering_algo = None
 
         elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score", "isotonic-binning"]:
             pass
@@ -299,8 +315,17 @@ class PartitionPostprocessor(BasePostprocessor):
             bin_edges = self.bin_edges.to(embs.device)
             cluster = torch.bucketize(embs, bin_edges[1:-1])
             return cluster
+        elif self.method == "kmeans-constrained":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
+            if embs.dim() == 1:
+                X = embs.detach().cpu().numpy().reshape(-1, 1)
+            else:
+                X = embs.detach().cpu().numpy()
+            cluster_labels = self.clustering_algo.predict(X)
+            cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+            return cluster
 
-        
         else:
             if self.reducer is not None:
                 embs = self.reducer.transform(embs.cpu().numpy())
@@ -454,6 +479,34 @@ class PartitionPostprocessor(BasePostprocessor):
             self.n_clusters = len(edges) + 1
             clusters = torch.bucketize(embs.to(self.device), self.bin_edges)
             clusters = clusters.to(self.device, dtype=torch.long)
+        elif self.method == "kmeans-constrained":
+            # Convert to numpy for sklearn-compatible KMeansConstrained
+            if all_embs.dim() > 1 and all_embs.size(1) == 1:
+                all_embs = all_embs.squeeze(1)
+            if all_embs.dim() == 1:
+                X = all_embs.detach().cpu().numpy().reshape(-1, 1)
+            else:
+                X = all_embs.detach().cpu().numpy()
+
+            n_samples = X.shape[0]
+            # For uniform mass: each cluster should have approximately n_samples / n_clusters
+            size_min = n_samples // self.n_clusters
+            size_max = size_min + (1 if n_samples % self.n_clusters != 0 else 0)
+
+            # Instantiate KMeansConstrained with size constraints
+            self.clustering_algo = KMeansConstrained(
+                n_clusters=self.n_clusters,
+                size_min=size_min,
+                size_max=size_max,
+                random_state=self.quantiz_seed,
+                n_init=self.n_init if self.n_init else 10,
+                max_iter=self.max_iter if self.max_iter else 300,
+            )
+
+            # Fit and predict
+            cluster_labels = self.clustering_algo.fit_predict(X)
+            clusters = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+
         elif self.method == "quantile-merge":
             embs = all_embs.squeeze()
             if embs.ndim != 1:

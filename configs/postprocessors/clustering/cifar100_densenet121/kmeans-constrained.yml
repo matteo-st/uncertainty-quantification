@@ -1,0 +1,39 @@
+# K-means with uniform mass constraint (equal-sized clusters)
+# Uses k-means-constrained package which formulates cluster assignment
+# as a Minimum Cost Flow problem solved via OR-Tools SimpleMinCostFlow
+
+name: partition
+postprocessor_args:
+  alpha: 0.5
+  method: kmeans-constrained
+  bound: hoeffding
+  n_classes: 100
+
+  space: gini
+  reorder_embs: False
+  temperature: 1.0
+  magnitude: 0.0
+  normalize: True
+  pred_weights: 0
+  score: upper
+
+  n_clusters: 100
+  init_scheme: k-means++
+  n_init: 10
+  max_iter: 300
+  clustering_seed: 42
+
+experience_args:
+  n_folds: 10
+  fit_after_cv: True
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [50, 100, 200, 300, 400, 500]
+  alpha: [0.1, 0.5]
+  score: [upper, mean]

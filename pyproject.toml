@@ -27,6 +27,7 @@ dependencies = [
   "joblib",
   "numpy",
   "torch-uncertainty",
+  "k-means-constrained",
 ]
 
 [project.optional-dependencies]
