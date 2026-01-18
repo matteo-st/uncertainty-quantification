@@ -237,8 +237,8 @@ def main():
         print(f"{'='*60}")
 
         # Load configs
-        cfg_dataset = Config.from_yaml(config["dataset_cfg"])
-        cfg_model = Config.from_yaml(config["model_cfg"])
+        cfg_dataset = Config(config["dataset_cfg"])
+        cfg_model = Config(config["model_cfg"])
 
         # Load score configs from previous grids
         score_configs = load_score_configs(results_dir, dataset_name, model_name)
