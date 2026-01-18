@@ -11,6 +11,7 @@ from .isotonic_postprocessor import IsotonicPostprocessor
 from .isotonic_splitting_postprocessor import IsotonicSplittingPostprocessor
 from .uniform_mass_postprocessor import UniformMassPostprocessor
 from .lda_binning_postprocessor import LDABinningPostprocessor
+from .raw_lda_postprocessor import RawLDAPostprocessor
 
 
 postprocessors = {
@@ -27,6 +28,7 @@ postprocessors = {
     "isotonic_splitting": IsotonicSplittingPostprocessor,
     "uniform_mass": UniformMassPostprocessor,
     "lda_binning": LDABinningPostprocessor,
+    "raw_lda": RawLDAPostprocessor,
     }
 
 def get_postprocessor(postprocessor_name, model, cfg, result_folder, device):

@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 from sklearn.metrics import auc, roc_curve, average_precision_score
@@ -525,10 +526,172 @@ class AblationDetector:
 
         return scores_adv
 
+    def get_multi_score_with_perturbation(
+        self,
+        score_configs: dict,
+        postprocessor_cls_map: dict = None,
+    ):
+        """
+        Compute multiple scores where each score can have different perturbation settings.
 
-    
-    
-    
+        This method enables per-score perturbation for methods like LDA that combine
+        multiple uncertainty scores (e.g., gini, margin, msp), where each score may
+        have different optimal hyperparameters (temperature, magnitude).
+
+        Args:
+            score_configs: Dict mapping score_name to config dict with keys:
+                - temperature: float (default 1.0)
+                - magnitude: float (default 0.0, >0 enables ODIN perturbation)
+                - normalize: bool (default False, only used by gini)
+                Example: {"gini": {"temperature": 1.2, "magnitude": 0.002, "normalize": True},
+                          "margin": {"temperature": 0.8, "magnitude": 0.0}}
+            postprocessor_cls_map: Optional dict mapping score_name to PostprocessorClass.
+                If not provided, uses default mapping:
+                {"gini": DoctorPostprocessor, "msp": ODINPostprocessor, "margin": MarginPostprocessor}
+
+        Returns:
+            Tuple of:
+                - scores_dict: Dict mapping score_name to np.ndarray of scores
+                - detector_labels: np.ndarray of binary labels (1 = error, 0 = correct)
+        """
+        from error_estimation.utils.postprocessors import (
+            DoctorPostprocessor, ODINPostprocessor, MarginPostprocessor
+        )
+
+        # Default postprocessor mapping
+        if postprocessor_cls_map is None:
+            postprocessor_cls_map = {
+                "gini": DoctorPostprocessor,
+                "msp": ODINPostprocessor,
+                "margin": MarginPostprocessor,
+            }
+
+        # Resolve indices for this split
+        def _resolve_indices(dataset):
+            indices = getattr(dataset, "indices", None)
+            if indices is None:
+                return None
+            indices = list(indices)
+            base_dataset = getattr(dataset, "dataset", None)
+            if base_dataset is None:
+                return indices
+            base_indices = _resolve_indices(base_dataset)
+            if base_indices is None:
+                return indices
+            return [base_indices[i] for i in indices]
+
+        split_indices = _resolve_indices(self.loader.dataset)
+        n_samples = len(split_indices) if split_indices is not None else len(self.loader.dataset)
+
+        # Load or compute logits and labels
+        if self.latent_path and os.path.exists(self.latent_path):
+            pkg = torch.load(self.latent_path, map_location="cpu")
+            logits = pkg["logits"].to(self.torch_dtype).to(self.device)
+            all_labels = pkg["labels"].numpy()
+            all_model_preds = pkg["model_preds"].numpy()
+
+            if split_indices is not None:
+                if max(split_indices) >= logits.size(0):
+                    raise ValueError(
+                        f"Latent cache {self.latent_path} does not cover split indices "
+                        f"(max {max(split_indices)} >= {logits.size(0)})."
+                    )
+                logits = logits[split_indices]
+                all_labels = all_labels[split_indices]
+                all_model_preds = all_model_preds[split_indices]
+
+            detector_labels = (all_model_preds != all_labels).astype(np.int32)
+            has_cached_logits = True
+        else:
+            has_cached_logits = False
+            logits = None
+            detector_labels = None
+
+        # Initialize score storage
+        scores_dict = {name: np.zeros(n_samples, dtype=np.float64) for name in score_configs}
+
+        # Compute each score with its specific perturbation
+        for score_name, cfg in score_configs.items():
+            temperature = float(cfg.get("temperature", 1.0))
+            magnitude = float(cfg.get("magnitude", 0.0))
+            normalize = cfg.get("normalize", False)
+
+            # Create postprocessor config
+            postprocessor_cfg = {
+                "temperature": temperature,
+                "magnitude": magnitude,
+                "normalize": normalize,
+            }
+
+            # Get postprocessor class
+            if score_name not in postprocessor_cls_map:
+                raise ValueError(f"Unknown score: {score_name}. Available: {list(postprocessor_cls_map.keys())}")
+
+            postprocessor_cls = postprocessor_cls_map[score_name]
+            detector = postprocessor_cls(
+                model=self.model,
+                cfg=postprocessor_cfg,
+                result_folder=self.result_folder,
+                device=self.device,
+            )
+
+            if magnitude > 0:
+                # Need to iterate through dataloader for perturbation
+                self.model.to(self.device)
+                self.model.eval()
+                write_idx = 0
+
+                for inputs, labels in tqdm(
+                    self.loader,
+                    desc=f"Computing {score_name} (perturbed)",
+                    leave=False
+                ):
+                    bs = inputs.size(0)
+                    scores = self.get_pertubated_scores(inputs, detector, magnitude)
+                    if isinstance(scores, torch.Tensor):
+                        scores = scores.detach().cpu().numpy()
+                    scores_dict[score_name][write_idx:write_idx + bs] = scores
+                    write_idx += bs
+            else:
+                # No perturbation - use cached logits if available
+                if has_cached_logits:
+                    with torch.no_grad():
+                        scores = detector(logits=logits)
+                    scores_dict[score_name][:] = scores.cpu().numpy()
+                else:
+                    # Need to compute logits
+                    self.model.to(self.device)
+                    self.model.eval()
+                    write_idx = 0
+                    all_labels_list = []
+                    all_preds_list = []
+
+                    for inputs, labels in tqdm(
+                        self.loader,
+                        desc=f"Computing {score_name}",
+                        leave=False
+                    ):
+                        bs = inputs.size(0)
+                        inputs = inputs.to(self.device)
+                        labels = labels.to(self.device)
+
+                        with torch.no_grad():
+                            batch_logits = self.model(inputs)
+                            preds = torch.argmax(batch_logits, dim=1)
+                            scores = detector(logits=batch_logits)
+
+                        scores_dict[score_name][write_idx:write_idx + bs] = scores.cpu().numpy()
+                        all_labels_list.append(labels.cpu().numpy())
+                        all_preds_list.append(preds.cpu().numpy())
+                        write_idx += bs
+
+                    # Compute detector labels if not already done
+                    if detector_labels is None:
+                        all_labels = np.concatenate(all_labels_list)
+                        all_preds = np.concatenate(all_preds_list)
+                        detector_labels = (all_preds != all_labels).astype(np.int32)
+
+        return scores_dict, detector_labels
 
     def get_scores(self, detectors, n_samples, list_configs, logits=None):
 
@@ -1033,8 +1196,6 @@ class MultiDetectorEvaluator:
 
         return list_results
 
-
-import os
 
 # class DetectorEvaluator:
 #     def __init__(

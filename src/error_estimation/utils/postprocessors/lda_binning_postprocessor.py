@@ -4,8 +4,10 @@ LDA Binning Postprocessor.
 Combines multiple uncertainty scores using LDA (Linear Discriminant Analysis),
 then applies uniform mass binning on the combined score.
 
+Inherits from RawLDAPostprocessor for LDA fitting and score computation.
+
 Strategy:
-1. Compute multiple base scores (e.g., gini, margin, msp) on calibration data
+1. Compute multiple base scores (e.g., gini, margin, msp) with per-score perturbation
 2. Use LDA to project to 1D (supervised projection that maximizes class separation)
 3. Apply uniform mass binning on the 1D combined score
 4. Compute mean and upper bound error rates per bin
@@ -14,36 +16,19 @@ Strategy:
 
 import torch
 import numpy as np
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
-from .base_postprocessor import BasePostprocessor
-from .doctor_postprocessor import gini
+from .raw_lda_postprocessor import RawLDAPostprocessor
 
 
-class LDABinningPostprocessor(BasePostprocessor):
+class LDABinningPostprocessor(RawLDAPostprocessor):
     """
     LDA-based score combination with uniform mass binning.
 
-    Combines multiple uncertainty scores using LDA projection,
-    then bins using quantiles (uniform mass) and computes error rates.
-
-    Supports per-score hyperparameter configuration via score_configs dict.
+    Extends RawLDAPostprocessor with binning capabilities.
     """
 
     def __init__(self, model, cfg, result_folder, device=torch.device('cpu')):
         super().__init__(model, cfg, result_folder, device)
-
-        # Default score configuration (used if per-score config not provided)
-        self.default_temperature = float(cfg.get("temperature", 1.0))
-        self.default_normalize = cfg.get("normalize", False)
-        self.default_magnitude = float(cfg.get("magnitude", 0.0))
-
-        # Per-score configurations: {score_name: {temperature, normalize, magnitude}}
-        # Can be set via set_score_configs() after loading from previous runs
-        self.score_configs = cfg.get("score_configs", {})
-
-        # Which scores to combine
-        self.base_scores = cfg.get("base_scores", ["gini", "margin"])
 
         # Binning configuration
         self.n_bins = int(cfg.get("n_bins", 10))
@@ -57,73 +42,12 @@ class LDABinningPostprocessor(BasePostprocessor):
         # Bound type: "hoeffding" or "bernstein"
         self.bound = cfg.get("bound", "hoeffding")
 
-        # LDA model
-        self.lda = None
-
         # After fitting: store bin boundaries and error rates
         self.bin_edges = []
         self.bin_error_means = []
         self.bin_error_uppers = []
         self.bin_counts = []
-        self.is_fitted = False
-
-    def set_score_configs(self, score_configs):
-        """
-        Set per-score hyperparameter configurations.
-
-        Args:
-            score_configs: dict mapping score_name to {temperature, normalize, magnitude}
-                Example: {"gini": {"temperature": 1.2, "normalize": True, "magnitude": 0.002},
-                          "margin": {"temperature": 0.8, "normalize": False, "magnitude": 0.0}}
-        """
-        self.score_configs = score_configs
-
-    def _get_score_config(self, score_name):
-        """Get configuration for a specific score, falling back to defaults."""
-        if score_name in self.score_configs:
-            cfg = self.score_configs[score_name]
-            return {
-                "temperature": float(cfg.get("temperature", self.default_temperature)),
-                "normalize": cfg.get("normalize", self.default_normalize),
-                "magnitude": float(cfg.get("magnitude", self.default_magnitude)),
-            }
-        return {
-            "temperature": self.default_temperature,
-            "normalize": self.default_normalize,
-            "magnitude": self.default_magnitude,
-        }
-
-    def _compute_single_score(self, logits, score_name):
-        """Compute a single uncertainty score from logits using per-score config."""
-        cfg = self._get_score_config(score_name)
-        temperature = cfg["temperature"]
-        normalize = cfg["normalize"]
-
-        if score_name == "gini":
-            return gini(logits, temperature=temperature, normalize=normalize).squeeze()
-        elif score_name == "msp":
-            probs = torch.softmax(logits / temperature, dim=1)
-            return -probs.max(dim=1)[0]
-        elif score_name == "margin":
-            probs = torch.softmax(logits / temperature, dim=1)
-            top2 = probs.topk(2, dim=1)[0]
-            return -(top2[:, 0] - top2[:, 1])
-        elif score_name == "entropy":
-            probs = torch.softmax(logits / temperature, dim=1)
-            entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
-            return entropy
-        elif score_name == "max_logit":
-            return -logits.max(dim=1)[0]
-        else:
-            raise ValueError(f"Unknown score: {score_name}")
-
-    def _compute_all_scores(self, logits):
-        """Compute all base scores and stack them."""
-        scores_list = []
-        for score_name in self.base_scores:
-            score = self._compute_single_score(logits, score_name)
-            scores_list.append(score.detach().cpu().numpy())
-        return np.column_stack(scores_list)
+        self.binning_fitted = False
 
     def _compute_upper_bound(self, mean, n, variance=None):
         """Compute upper confidence bound for error rate."""
@@ -145,44 +69,15 @@ class LDABinningPostprocessor(BasePostprocessor):
 
         return min(1.0, mean + half)
 
-    def fit_lda(self, logits, detector_labels):
+    def fit_binning(self, combined_scores, labels):
         """
-        Fit LDA on the given data.
-
-        Should be called on res split to learn the projection,
-        before calling fit() on cal split.
-        """
-        # Compute all scores
-        X = self._compute_all_scores(logits)
-        y = detector_labels.detach().cpu().numpy().astype(int)
-
-        # Fit LDA
-        self.lda = LinearDiscriminantAnalysis(n_components=1)
-        self.lda.fit(X, y)
-
-    def _apply_lda(self, logits):
-        """Apply LDA projection to get 1D combined score."""
-        X = self._compute_all_scores(logits)
-        return self.lda.transform(X).ravel()
-
-    @torch.no_grad()
-    def fit(self, logits, detector_labels, dataloader=None, **kwargs):
-        """
-        Fit uniform mass binning on calibration data.
-
-        LDA should already be fitted (via fit_lda on res split).
-        This method creates bins and computes error rates on cal.
+        Fit uniform mass binning on combined LDA scores.
 
         Args:
-            logits: Tensor of shape [n_samples, n_classes]
-            detector_labels: Tensor of shape [n_samples] with binary error labels
+            combined_scores: 1D array of LDA scores
+            labels: Binary labels (1 = error, 0 = correct)
         """
-        if self.lda is None:
-            raise ValueError("LDA must be fitted first. Call fit_lda() on res split.")
-
-        # Apply LDA to get combined score
-        combined_scores = self._apply_lda(logits)
-        labels = detector_labels.detach().cpu().numpy().astype(np.float64)
+        labels = np.asarray(labels, dtype=np.float64)
 
         # Create bin edges using quantiles (uniform mass)
         quantiles = np.linspace(0, 100, self.n_bins + 1)
@@ -222,7 +117,45 @@ class LDABinningPostprocessor(BasePostprocessor):
             self.bin_error_means.append(mean)
             self.bin_error_uppers.append(upper_bound)
 
-        self.is_fitted = True
+        self.binning_fitted = True
+
+    def fit_binning_with_perturbation(self, evaluator, score_configs=None):
+        """
+        Fit binning using proper per-score perturbation.
+
+        LDA must be fitted first via fit_lda_with_perturbation().
+
+        Args:
+            evaluator: AblationDetector instance for the calibration split
+            score_configs: Optional dict of per-score configs
+        """
+        lda_scores, labels = self.evaluate_with_perturbation(evaluator, score_configs)
+        self.fit_binning(lda_scores, labels)
+        return lda_scores, labels
+
+    @torch.no_grad()
+    def fit(self, logits, detector_labels, dataloader=None, **kwargs):
+        """
+        Fit uniform mass binning on calibration data.
+
+        LDA should already be fitted (via fit_lda or fit_lda_with_perturbation).
+        This method creates bins and computes error rates.
+
+        For proper perturbation support, use fit_binning_with_perturbation() instead.
+
+        Args:
+            logits: Tensor of shape [n_samples, n_classes]
+            detector_labels: Tensor of shape [n_samples] with binary error labels
+        """
+        if self.lda is None:
+            raise ValueError("LDA must be fitted first. Call fit_lda() or fit_lda_with_perturbation().")
+
+        # Apply LDA to get combined score (no perturbation)
+        combined_scores = self._apply_lda(logits)
+        labels = detector_labels.detach().cpu().numpy() if isinstance(
+            detector_labels, torch.Tensor) else detector_labels.astype(np.float64)
+
+        self.fit_binning(combined_scores, labels)
 
     def _get_bin_index(self, score):
         """Find which bin a score belongs to."""
@@ -239,27 +172,8 @@ class LDABinningPostprocessor(BasePostprocessor):
 
         return self.n_bins - 1
 
-    @torch.no_grad()
-    def __call__(self, inputs=None, logits=None):
-        """
-        Apply LDA + binning to get calibrated error probabilities.
-
-        Returns:
-            Tensor of calibrated error probabilities [n_samples]
-        """
-        if logits is None:
-            if inputs is None:
-                raise ValueError("Either logits or inputs must be provided")
-            logits = self.model(inputs)
-
-        if not self.is_fitted or self.lda is None:
-            # Return raw gini score if not fitted
-            return gini(logits, temperature=self.temperature, normalize=self.normalize).squeeze()
-
-        # Apply LDA
-        combined_scores = self._apply_lda(logits)
-
-        # Apply binning
+    def _apply_binning(self, combined_scores):
+        """Apply binning to get calibrated probabilities."""
         calibrated = np.zeros(len(combined_scores), dtype=np.float64)
 
         for i, score in enumerate(combined_scores):
@@ -269,23 +183,67 @@ class LDABinningPostprocessor(BasePostprocessor):
             else:  # upper
                 calibrated[i] = self.bin_error_uppers[bin_idx]
 
+        return calibrated
+
+    @torch.no_grad()
+    def __call__(self, inputs=None, logits=None):
+        """
+        Apply LDA + binning to get calibrated error probabilities.
+
+        Note: This method does NOT apply perturbation.
+
+        Returns:
+            Tensor of calibrated error probabilities [n_samples]
+        """
+        if logits is None:
+            if inputs is None:
+                raise ValueError("Either logits or inputs must be provided")
+            logits = self.model(inputs)
+
+        if not self.binning_fitted or self.lda is None:
+            # Return raw gini score if not fitted
+            from .doctor_postprocessor import gini
+            return gini(logits, temperature=self.default_temperature,
+                        normalize=self.default_normalize).squeeze()
+
+        # Apply LDA
+        combined_scores = self._apply_lda(logits)
+
+        # Apply binning
+        calibrated = self._apply_binning(combined_scores)
+
         return torch.tensor(calibrated, dtype=torch.float32, device=self.device)
+
+    def evaluate_with_binning_and_perturbation(self, evaluator, score_configs=None):
+        """
+        Evaluate on a split using perturbation and binning.
+
+        Args:
+            evaluator: AblationDetector instance
+            score_configs: Optional per-score configs
+
+        Returns:
+            Tuple of (calibrated_scores, detector_labels)
+        """
+        if not self.binning_fitted:
+            raise ValueError("Binning must be fitted first via fit_binning() or fit_binning_with_perturbation()")
+
+        lda_scores, labels = self.evaluate_with_perturbation(evaluator, score_configs)
+        calibrated = self._apply_binning(lda_scores)
+        return calibrated, labels
 
     def get_diagnostics(self):
         """Return diagnostic information about the fitted model."""
-        if not self.is_fitted:
-            return {"is_fitted": False}
-
-        return {
-            "is_fitted": True,
+        base_diag = super().get_diagnostics()
+        base_diag.update({
             "n_bins": self.n_bins,
             "alpha": self.alpha,
             "score_type": self.score_type,
-            "base_scores": self.base_scores,
-            "score_configs": self.score_configs,
+            "bound": self.bound,
+            "binning_fitted": self.binning_fitted,
             "bin_edges": self.bin_edges,
             "bin_error_means": self.bin_error_means,
             "bin_error_uppers": self.bin_error_uppers,
             "bin_counts": self.bin_counts,
-            "lda_coef": self.lda.coef_.tolist() if self.lda else None,
-        }
+        })
+        return base_diag
