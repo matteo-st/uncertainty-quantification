@@ -951,6 +951,16 @@ class HyperparamsSearch(EvaluatorAblation):
         print(f"Cal {self.metric}: {self.best_result[f'{self.metric}_cal'].values}")
         print(f"Test {self.metric}: {self.best_result[f'{self.metric}_test'].values}")
 
+        # Convert list columns to strings for pandas compatibility
+        for col in hyperparam_results.columns:
+            if hyperparam_results[col].apply(lambda x: isinstance(x, list)).any():
+                hyperparam_results[col] = hyperparam_results[col].apply(
+                    lambda x: str(x) if isinstance(x, list) else x
+                )
+
+        # Store results for run_detection.py
+        self.results = hyperparam_results
+
         # Save all results
         self.save_results(
             result_file=os.path.join(self.result_folder, "search.jsonl"),
@@ -1325,6 +1335,8 @@ class HyperparamsSearch(EvaluatorAblation):
                 t1 = time.time()
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
+                # LDA binning saves all results in search_lda_binning, return early
+                return
             elif self.postprocessor_name == "partition":
                 if self.verbose:
                     print("Performing hyperparameter search without fitting")
