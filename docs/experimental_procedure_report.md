@@ -1256,67 +1256,18 @@ LDA binning combines multiple uncertainty scores through supervised dimensionali
 
 ### 8.1 Raw LDA Score Combination (Without Binning)
 
-Before examining binning, we first test whether LDA combination of raw uncertainty scores improves error detection over individual scores. This isolates the effect of score combination from binning.
+**STATUS: PENDING RE-RUN**
+
+Previous results were computed with incorrect hyperparameters (used seed-1 hyperparameters for all seeds instead of per-seed selection). See Issue #1 in `docs/inconsistencies_log.md`.
 
 **Experiment:** Fit LDA on res split (supervised by error labels), apply to test, measure ROC-AUC and FPR@95.
 
-#### Individual Scores (Raw, Test Set)
+**To re-run:**
+```bash
+python scripts/run_raw_lda_evaluation.py --seed-splits 1 2 3 4 5 6 7 8 9
+```
 
-| Dataset | Model | Gini | Margin | MSP | Entropy |
-|---------|-------|------|--------|-----|---------|
-| CIFAR-10 | ResNet-34 | 0.924 ± 0.004 | 0.928 ± 0.004 | **0.930 ± 0.003** | 0.925 ± 0.004 |
-| CIFAR-10 | DenseNet-121 | 0.916 ± 0.006 | **0.916 ± 0.006** | 0.916 ± 0.006 | 0.914 ± 0.006 |
-| CIFAR-100 | ResNet-34 | 0.880 ± 0.003 | 0.881 ± 0.003 | **0.882 ± 0.003** | 0.873 ± 0.003 |
-| CIFAR-100 | DenseNet-121 | 0.856 ± 0.004 | 0.852 ± 0.004 | 0.855 ± 0.004 | **0.858 ± 0.004** |
-
-#### LDA Combined Scores (Raw, Test Set)
-
-**CIFAR-10 ResNet-34:**
-| Combination | ROC-AUC Test | FPR@95 Test |
-|-------------|--------------|-------------|
-| gini+margin | 0.922 ± 0.004 | 0.406 ± 0.060 |
-| gini+msp | 0.923 ± 0.004 | 0.385 ± 0.065 |
-| margin+msp | 0.926 ± 0.004 | 0.318 ± 0.052 |
-| gini+margin+msp | 0.922 ± 0.005 | 0.392 ± 0.076 |
-| gini+margin+msp+entropy | 0.918 ± 0.008 | 0.421 ± 0.120 |
-
-**CIFAR-10 DenseNet-121:**
-| Combination | ROC-AUC Test | FPR@95 Test |
-|-------------|--------------|-------------|
-| gini+margin | 0.915 ± 0.006 | 0.335 ± 0.022 |
-| gini+msp | 0.916 ± 0.006 | 0.333 ± 0.022 |
-| margin+msp | 0.916 ± 0.006 | 0.333 ± 0.025 |
-| gini+margin+msp | 0.915 ± 0.006 | 0.333 ± 0.023 |
-| gini+margin+msp+entropy | 0.913 ± 0.006 | 0.340 ± 0.024 |
-
-**CIFAR-100 ResNet-34:**
-| Combination | ROC-AUC Test | FPR@95 Test |
-|-------------|--------------|-------------|
-| gini+margin | 0.880 ± 0.003 | 0.405 ± 0.013 |
-| gini+msp | 0.880 ± 0.003 | 0.405 ± 0.013 |
-| margin+msp | 0.882 ± 0.003 | 0.393 ± 0.012 |
-| gini+margin+msp | 0.880 ± 0.003 | 0.405 ± 0.013 |
-| gini+margin+msp+entropy | 0.880 ± 0.004 | 0.408 ± 0.021 |
-
-**CIFAR-100 DenseNet-121:**
-| Combination | ROC-AUC Test | FPR@95 Test |
-|-------------|--------------|-------------|
-| gini+margin | 0.857 ± 0.003 | 0.457 ± 0.016 |
-| gini+msp | 0.856 ± 0.003 | 0.457 ± 0.015 |
-| margin+msp | 0.855 ± 0.004 | 0.456 ± 0.015 |
-| gini+margin+msp | 0.855 ± 0.003 | 0.456 ± 0.016 |
-| gini+entropy | 0.858 ± 0.004 | 0.464 ± 0.016 |
-
-#### Summary: Best Individual vs Best LDA
-
-| Dataset | Model | Best Individual | Best LDA | Δ ROC-AUC |
-|---------|-------|-----------------|----------|-----------|
-| CIFAR-10 | ResNet-34 | MSP (0.930) | margin+msp (0.926) | **-0.004** |
-| CIFAR-10 | DenseNet-121 | margin (0.916) | margin+msp (0.916) | 0.000 |
-| CIFAR-100 | ResNet-34 | MSP (0.882) | margin+msp (0.882) | 0.000 |
-| CIFAR-100 | DenseNet-121 | entropy (0.858) | gini+entropy (0.858) | 0.000 |
-
-**Key Finding:** LDA combination of uncertainty scores provides **no improvement** over the best individual score. In CIFAR-10 ResNet-34, the best individual score (MSP) actually outperforms all LDA combinations. The scores (gini, margin, msp, entropy) are all derived from the same softmax distribution and are highly correlated, limiting LDA's ability to find a better projection.
+Results will be populated after re-running with correct per-seed hyperparameters.
 
 ### 8.2 Effect of Binning Configuration
 
