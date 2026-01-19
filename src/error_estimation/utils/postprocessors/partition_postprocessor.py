@@ -204,6 +204,12 @@ class PartitionPostprocessor(BasePostprocessor):
                 probs = torch.softmax(logits / self.temperature, dim=1)
                 embs, _ = torch.max(probs, dim=1)
                 return -embs
+            elif self.quantiz_space == "margin":
+                probs = torch.softmax(logits / self.temperature, dim=1)
+                top2 = torch.topk(probs, k=2, dim=1).values
+                margin = top2[:, 0] - top2[:, 1]
+                embs = 1.0 - margin  # Higher score = more uncertain (lower margin)
+                return embs
         else:
             self.model.to(self.device)
             logits = self.model(x)
@@ -220,6 +226,11 @@ class PartitionPostprocessor(BasePostprocessor):
                 probs = torch.softmax(logits / self.temperature, dim=1)
                 embs, _ = torch.max(probs, dim=1)
                 embs = -embs
+            elif self.quantiz_space == "margin":
+                probs = torch.softmax(logits / self.temperature, dim=1)
+                top2 = torch.topk(probs, k=2, dim=1).values
+                margin = top2[:, 0] - top2[:, 1]
+                embs = 1.0 - margin  # Higher score = more uncertain (lower margin)
             else:
                 raise ValueError("Unsupported quantiz_space")
 
