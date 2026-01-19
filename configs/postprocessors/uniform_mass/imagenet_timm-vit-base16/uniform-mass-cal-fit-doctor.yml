@@ -1,0 +1,25 @@
+name: uniform_mass
+postprocessor_args:
+  base_score: gini
+  temperature: 1.0
+  normalize: False
+  magnitude: 0.0
+  n_bins: 10
+
+experience_args:
+  # No n_folds: uniform_mass fits on full cal set (no CV to preserve guarantees)
+  n_epochs:
+    res: None
+    cal: 1
+  transform:
+    res: None
+    cal: test
+  raw_score_selection:
+    postprocessor: doctor
+    metric: fpr
+    split: res
+    run_tag_prefix: doctor-res-grid-nres{n_res}-
+    root_dir: ./results
+
+postprocessor_grid:
+  n_bins: [5, 10, 15, 20, 30, 50, 100]
