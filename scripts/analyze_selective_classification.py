@@ -25,12 +25,95 @@ import torch
 def load_cluster_stats(stats_path: str) -> Dict[str, torch.Tensor]:
     """Load cluster statistics from partition_cluster_stats_*.pt file."""
     data = torch.load(stats_path, map_location="cpu")
-    return {
+    result = {
         "counts": data["cluster_counts"],
         "means": data["cluster_error_means"],
         "vars": data["cluster_error_vars"],
         "intervals": data["cluster_intervals"],  # (bs, K, 2) [lower, upper]
     }
+    if "bin_edges" in data:
+        result["bin_edges"] = data["bin_edges"]
+    return result
+
+
+def compute_gini_scores(logits: torch.Tensor, temperature: float = 1.0, normalize: bool = True) -> torch.Tensor:
+    """
+    Compute Gini impurity scores from logits.
+
+    The gini score is 1 - sum(softmax(logits)^2).
+    When normalize=True, returns (1-g)/g which can be >> 1 for high entropy predictions.
+    """
+    probas = torch.softmax(logits / temperature, dim=1)
+    g = (probas ** 2).sum(dim=1, keepdim=True)
+    if normalize:
+        return ((1 - g) / g).squeeze(1)
+    else:
+        return (1 - g).squeeze(1)
+
+
+def compute_test_clusters_from_bin_edges(
+    bin_edges: torch.Tensor,
+    test_scores: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Assign test samples to bins using bin edges.
+
+    For uniform mass binning, samples are assigned based on their score
+    falling between consecutive bin edges.
+    """
+    # bin_edges has shape (K-1,) for K bins
+    # For each test sample, find which bin it belongs to using searchsorted
+    # searchsorted returns the index where the value would be inserted to maintain order
+    # This effectively gives us the bin assignment
+
+    # Ensure test_scores is 1D
+    if test_scores.dim() > 1:
+        test_scores = test_scores.squeeze()
+
+    # Use bucketize (same as searchsorted for this use case)
+    # Returns indices 0 to K where K is len(bin_edges)
+    # Bin 0: score < bin_edges[0]
+    # Bin i: bin_edges[i-1] <= score < bin_edges[i]
+    # Bin K: score >= bin_edges[-1]
+    test_clusters = torch.bucketize(test_scores, bin_edges)
+
+    return test_clusters
+
+
+def load_test_data_from_latent(
+    latent_path: str,
+    n_test: int,
+    seed_split: int,
+    n_res: int = 0,
+    n_cal: int = 0,
+    temperature: float = 1.0,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Load test logits and error labels from cached latent file.
+
+    Returns:
+        test_logits: (n_test, n_classes) logits
+        test_errors: (n_test,) binary error indicators
+    """
+    pkg = torch.load(latent_path, map_location="cpu")
+    all_logits = pkg["logits"].to(torch.float32)
+    all_labels = pkg["labels"]
+    all_model_preds = pkg["model_preds"]
+    all_detector_labels = (all_model_preds != all_labels).int()
+
+    # Shuffle indices with the same seed
+    N = len(all_detector_labels)
+    indices = list(range(N))
+    import random
+    random.seed(seed_split)
+    random.shuffle(indices)
+
+    # Get test indices
+    test_start = n_res + n_cal
+    test_end = test_start + n_test
+    test_indices = indices[test_start:test_end]
+
+    return all_logits[test_indices], all_detector_labels[test_indices]
 
 
 def load_test_clusters(clusters_path: str) -> torch.Tensor:
@@ -186,6 +269,7 @@ def analyze_run(
     n_res: int,
     n_cal: int,
     alpha: float,
+    temperature: float = 1.0,
 ) -> Dict:
     """Analyze a single experiment run."""
     seed_dir = results_dir / f"seed-split-{seed_split}"
@@ -196,16 +280,26 @@ def analyze_run(
         return None
     stats = load_cluster_stats(str(stats_path))
 
-    # Load test cluster assignments
-    clusters_path = seed_dir / f"clusters_test_n-clusters-{n_clusters}.pt"
-    if not clusters_path.exists():
-        return None
-    test_clusters = load_test_clusters(str(clusters_path))
-
-    # Load test errors
-    test_errors = load_test_errors_from_latent(
-        latent_path, n_test, seed_split, n_res, n_cal
+    # Load test data (logits and errors) from latent file
+    test_logits, test_errors = load_test_data_from_latent(
+        latent_path, n_test, seed_split, n_res, n_cal, temperature
     )
+
+    # Compute test clusters from bin edges (more reliable than clusters_test file)
+    if "bin_edges" in stats:
+        # Compute scores using gini (max proba)
+        test_scores = compute_gini_scores(test_logits, temperature)
+        test_clusters = compute_test_clusters_from_bin_edges(stats["bin_edges"], test_scores)
+    else:
+        # Fall back to clusters_test file
+        clusters_path = seed_dir / f"clusters_test_n-clusters-{n_clusters}.pt"
+        if not clusters_path.exists():
+            return None
+        test_clusters = load_test_clusters(str(clusters_path))
+        # Verify size matches
+        if len(test_clusters) != n_test:
+            print(f"  Warning: clusters_test has {len(test_clusters)} samples, expected {n_test}")
+            return None
 
     # Verify per-bin guarantee
     violations, total_bins, violation_rate, bin_details = verify_per_bin_guarantee(
