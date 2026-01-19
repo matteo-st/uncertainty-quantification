@@ -1,0 +1,41 @@
+# K-means constrained clustering on top-5 softmax predictions
+# Uses probits space with reordering to get top-5 probabilities as features
+
+name: partition
+postprocessor_args:
+  alpha: 0.1
+  method: kmeans-constrained
+  bound: bernstein
+  n_classes: 100
+
+  space: probits           # Use full softmax probabilities
+  reorder_embs: True       # Sort by probability value (descending)
+  n_dim: 5                 # Take top 5 probabilities
+  temperature: 1.0
+  magnitude: 0.0
+  normalize: False         # No normalization for probits
+  pred_weights: 0
+  score: upper
+
+  n_clusters: 30
+  init_scheme: k-means++
+  n_init: 5
+  max_iter: 100
+  clustering_seed: 42
+
+experience_args:
+  fit_partition_on_cal: False
+  use_perturbed_logits: False  # No ODIN perturbation for probits
+  raw_score_selection: null    # No raw score selection needed
+  n_folds: null
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [10, 20, 30, 50]
+  alpha: [0.05, 0.1, 0.5]
+  score: [upper, mean]
