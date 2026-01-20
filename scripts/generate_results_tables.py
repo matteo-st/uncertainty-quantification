@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Generate LaTeX results tables for Margin and MSP experiments.
+Generate LaTeX results tables for Margin, MSP, and Doctor experiments.
 
-This script compares raw scores (Margin, MSP) vs Uniform Mass binning (UM).
+This script compares raw scores (Margin, MSP, Doctor) vs Uniform Mass binning (UM).
 - Baseline: best hyperparameters selected on res split (minimize FPR@95)
 - Partition: Rice Rule for K selection, score=upper, alpha=0.05
 
@@ -351,6 +351,16 @@ def main():
         help='Run tag for MSP partition experiments',
     )
     parser.add_argument(
+        '--doctor-baseline-tag',
+        default='doctor-grid-20260120',
+        help='Run tag for Doctor baseline experiments',
+    )
+    parser.add_argument(
+        '--doctor-partition-tag',
+        default='doctor-unif-mass-grid-20260120',
+        help='Run tag for Doctor partition experiments',
+    )
+    parser.add_argument(
         '--n-seeds',
         type=int,
         default=9,
@@ -461,6 +471,42 @@ def main():
     print(f"  - params.yml")
     print("\n" + msp_table)
 
+    # Generate Doctor table
+    print("\n" + "=" * 60)
+    print("Generating Doctor table...")
+    print("=" * 60)
+
+    doctor_baseline = get_baseline_results(
+        args.results_dir, 'doctor', args.doctor_baseline_tag, args.n_seeds
+    )
+    doctor_partition = get_partition_results(
+        args.results_dir, args.doctor_partition_tag, args.n_seeds,
+        alpha=args.alpha, score=args.score,
+    )
+    doctor_table = generate_latex_table('Doctor', doctor_baseline, doctor_partition)
+
+    # Save with parameters
+    doctor_tag = f"doctor_vs_um{args.tag_suffix}" if args.tag_suffix else "doctor_vs_um"
+    doctor_params = {
+        'score_name': 'Doctor',
+        'baseline': {
+            'postprocessor': 'doctor',
+            'run_tag': args.doctor_baseline_tag,
+            'selection': 'best on res (minimize FPR@95)',
+        },
+        'partition': {
+            'run_tag': args.doctor_partition_tag,
+            **partition_params,
+        },
+        'n_seeds': args.n_seeds,
+        'results_dir': str(args.results_dir),
+    }
+    doctor_dir = save_table_with_params(args.output_dir, doctor_tag, doctor_table, doctor_params)
+    print(f"\nSaved to: {doctor_dir}/")
+    print(f"  - table.tex")
+    print(f"  - params.yml")
+    print("\n" + doctor_table)
+
     # Print data availability summary
     print("\n" + "=" * 60)
     print("DATA AVAILABILITY SUMMARY")
@@ -480,6 +526,14 @@ def main():
 
     print("\nMSP partition (UM):")
     for r in msp_partition:
+        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+
+    print("\nDoctor baseline:")
+    for r in doctor_baseline:
+        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+
+    print("\nDoctor partition (UM):")
+    for r in doctor_partition:
         print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
 
