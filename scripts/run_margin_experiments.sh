@@ -8,8 +8,8 @@
 #   ./scripts/run_margin_experiments.sh status   # Check running jobs
 #
 # Results will be saved to:
-#   Step 1: results/<dataset>/<model>/margin/runs/<run_tag>/
-#   Step 2: results/<dataset>/<model>/partition/runs/<run_tag>/
+#   Step 1: results/baselines/<dataset>/<model>/margin/runs/<run_tag>/
+#   Step 2: results/partition_binning/<dataset>/<model>/partition/runs/<run_tag>/
 
 set -e
 
@@ -26,7 +26,7 @@ mkdir -p logs
 
 run_step1() {
     echo "=== Step 1: Running Margin Baseline with Grid Evaluation ==="
-    echo "Results: results/<dataset>/<model>/margin/runs/${RUN_TAG_BASELINE}/"
+    echo "Results: results/baselines/<dataset>/<model>/margin/runs/${RUN_TAG_BASELINE}/"
     echo "Starting 4 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
@@ -37,6 +37,7 @@ run_step1() {
         --config-detection configs/postprocessors/margin/cifar10_resnet34_hyperparams_search.yml \
         --mode search_res --eval-grid \
         --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -53,6 +54,7 @@ run_step1() {
         --config-detection configs/postprocessors/margin/cifar10_densenet121_hyperparams_search.yml \
         --mode search_res --eval-grid \
         --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -69,6 +71,7 @@ run_step1() {
         --config-detection configs/postprocessors/margin/cifar100_resnet34_hyperparams_search.yml \
         --mode search_res --eval-grid \
         --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -85,6 +88,7 @@ run_step1() {
         --config-detection configs/postprocessors/margin/cifar100_densenet121_hyperparams_search.yml \
         --mode search_res --eval-grid \
         --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -106,7 +110,7 @@ run_step1() {
 
 run_step2() {
     echo "=== Step 2: Running Uniform Mass Binning on Margin Score ==="
-    echo "Results: results/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
+    echo "Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
     echo "Starting 4 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
@@ -117,6 +121,7 @@ run_step2() {
         --config-detection configs/postprocessors/partition/cifar10_resnet34_margin-unif-mass.yml \
         --mode search_res \
         --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -134,6 +139,7 @@ run_step2() {
         --config-detection configs/postprocessors/partition/cifar10_densenet121_margin-unif-mass.yml \
         --mode search_res \
         --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -151,6 +157,7 @@ run_step2() {
         --config-detection configs/postprocessors/partition/cifar100_resnet34_margin-unif-mass.yml \
         --mode search_res \
         --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -168,6 +175,7 @@ run_step2() {
         --config-detection configs/postprocessors/partition/cifar100_densenet121_margin-unif-mass.yml \
         --mode search_res \
         --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
         --seed-splits 1 2 3 4 5 6 7 8 9 \
         --data-dir "${DATA_DIR}" \
         --checkpoints-dir "${CHECKPOINTS_DIR}" \
@@ -216,11 +224,11 @@ case "${1:-}" in
         echo ""
         echo "  step1  - Run Margin baseline with hyperparameter grid search"
         echo "           Grid: 6 temps × 7 magnitudes = 42 combinations"
-        echo "           Results: results/<dataset>/<model>/margin/runs/${RUN_TAG_BASELINE}/"
+        echo "           Results: results/baselines/<dataset>/<model>/margin/runs/${RUN_TAG_BASELINE}/"
         echo ""
         echo "  step2  - Run Uniform Mass Binning on Margin score"
         echo "           Grid: 5 n_clusters × 3 alphas × 2 scores = 30 combinations"
-        echo "           Results: results/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
+        echo "           Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
         echo ""
         echo "  status - Check running processes and log activity"
         exit 1
