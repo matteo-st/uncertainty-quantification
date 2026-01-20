@@ -385,6 +385,14 @@ def main():
         default='',
         help='Optional suffix to add to table tags',
     )
+    parser.add_argument(
+        '--scores',
+        type=str,
+        nargs='+',
+        default=['margin', 'msp', 'doctor'],
+        choices=['margin', 'msp', 'doctor'],
+        help='Which score tables to generate (default: all)',
+    )
     args = parser.parse_args()
 
     # Ensure output directory exists
@@ -399,142 +407,154 @@ def main():
     }
 
     # Generate Margin table
-    print("=" * 60)
-    print("Generating Margin table...")
-    print("=" * 60)
+    margin_baseline, margin_partition = None, None
+    if 'margin' in args.scores:
+        print("=" * 60)
+        print("Generating Margin table...")
+        print("=" * 60)
 
-    margin_baseline = get_baseline_results(
-        args.results_dir, 'margin', args.margin_baseline_tag, args.n_seeds
-    )
-    margin_partition = get_partition_results(
-        args.results_dir, args.margin_partition_tag, args.n_seeds,
-        alpha=args.alpha, score=args.score,
-    )
-    margin_table = generate_latex_table('Margin', margin_baseline, margin_partition)
+        margin_baseline = get_baseline_results(
+            args.results_dir, 'margin', args.margin_baseline_tag, args.n_seeds
+        )
+        margin_partition = get_partition_results(
+            args.results_dir, args.margin_partition_tag, args.n_seeds,
+            alpha=args.alpha, score=args.score,
+        )
+        margin_table = generate_latex_table('Margin', margin_baseline, margin_partition)
 
-    # Save with parameters
-    margin_tag = f"margin_vs_um{args.tag_suffix}" if args.tag_suffix else "margin_vs_um"
-    margin_params = {
-        'score_name': 'Margin',
-        'baseline': {
-            'postprocessor': 'margin',
-            'run_tag': args.margin_baseline_tag,
-            'selection': 'best on res (minimize FPR@95)',
-        },
-        'partition': {
-            'run_tag': args.margin_partition_tag,
-            **partition_params,
-        },
-        'n_seeds': args.n_seeds,
-        'results_dir': str(args.results_dir),
-    }
-    margin_dir = save_table_with_params(args.output_dir, margin_tag, margin_table, margin_params)
-    print(f"\nSaved to: {margin_dir}/")
-    print(f"  - table.tex")
-    print(f"  - params.yml")
-    print("\n" + margin_table)
+        # Save with parameters
+        margin_tag = f"margin_vs_um{args.tag_suffix}" if args.tag_suffix else "margin_vs_um"
+        margin_params = {
+            'score_name': 'Margin',
+            'baseline': {
+                'postprocessor': 'margin',
+                'run_tag': args.margin_baseline_tag,
+                'selection': 'best on res (minimize FPR@95)',
+            },
+            'partition': {
+                'run_tag': args.margin_partition_tag,
+                **partition_params,
+            },
+            'n_seeds': args.n_seeds,
+            'results_dir': str(args.results_dir),
+        }
+        margin_dir = save_table_with_params(args.output_dir, margin_tag, margin_table, margin_params)
+        print(f"\nSaved to: {margin_dir}/")
+        print(f"  - table.tex")
+        print(f"  - params.yml")
+        print("\n" + margin_table)
 
     # Generate MSP table
-    print("\n" + "=" * 60)
-    print("Generating MSP table...")
-    print("=" * 60)
+    msp_baseline, msp_partition = None, None
+    if 'msp' in args.scores:
+        print("\n" + "=" * 60)
+        print("Generating MSP table...")
+        print("=" * 60)
 
-    # Note: MSP uses 'odin' as the postprocessor name in baselines
-    msp_baseline = get_baseline_results(
-        args.results_dir, 'odin', args.msp_baseline_tag, args.n_seeds
-    )
-    msp_partition = get_partition_results(
-        args.results_dir, args.msp_partition_tag, args.n_seeds,
-        alpha=args.alpha, score=args.score,
-    )
-    msp_table = generate_latex_table('MSP', msp_baseline, msp_partition)
+        # Note: MSP uses 'odin' as the postprocessor name in baselines
+        msp_baseline = get_baseline_results(
+            args.results_dir, 'odin', args.msp_baseline_tag, args.n_seeds
+        )
+        msp_partition = get_partition_results(
+            args.results_dir, args.msp_partition_tag, args.n_seeds,
+            alpha=args.alpha, score=args.score,
+        )
+        msp_table = generate_latex_table('MSP', msp_baseline, msp_partition)
 
-    # Save with parameters
-    msp_tag = f"msp_vs_um{args.tag_suffix}" if args.tag_suffix else "msp_vs_um"
-    msp_params = {
-        'score_name': 'MSP',
-        'baseline': {
-            'postprocessor': 'odin',
-            'run_tag': args.msp_baseline_tag,
-            'selection': 'best on res (minimize FPR@95)',
-        },
-        'partition': {
-            'run_tag': args.msp_partition_tag,
-            **partition_params,
-        },
-        'n_seeds': args.n_seeds,
-        'results_dir': str(args.results_dir),
-    }
-    msp_dir = save_table_with_params(args.output_dir, msp_tag, msp_table, msp_params)
-    print(f"\nSaved to: {msp_dir}/")
-    print(f"  - table.tex")
-    print(f"  - params.yml")
-    print("\n" + msp_table)
+        # Save with parameters
+        msp_tag = f"msp_vs_um{args.tag_suffix}" if args.tag_suffix else "msp_vs_um"
+        msp_params = {
+            'score_name': 'MSP',
+            'baseline': {
+                'postprocessor': 'odin',
+                'run_tag': args.msp_baseline_tag,
+                'selection': 'best on res (minimize FPR@95)',
+            },
+            'partition': {
+                'run_tag': args.msp_partition_tag,
+                **partition_params,
+            },
+            'n_seeds': args.n_seeds,
+            'results_dir': str(args.results_dir),
+        }
+        msp_dir = save_table_with_params(args.output_dir, msp_tag, msp_table, msp_params)
+        print(f"\nSaved to: {msp_dir}/")
+        print(f"  - table.tex")
+        print(f"  - params.yml")
+        print("\n" + msp_table)
 
     # Generate Doctor table
-    print("\n" + "=" * 60)
-    print("Generating Doctor table...")
-    print("=" * 60)
+    doctor_baseline, doctor_partition = None, None
+    if 'doctor' in args.scores:
+        print("\n" + "=" * 60)
+        print("Generating Doctor table...")
+        print("=" * 60)
 
-    doctor_baseline = get_baseline_results(
-        args.results_dir, 'doctor', args.doctor_baseline_tag, args.n_seeds
-    )
-    doctor_partition = get_partition_results(
-        args.results_dir, args.doctor_partition_tag, args.n_seeds,
-        alpha=args.alpha, score=args.score,
-    )
-    doctor_table = generate_latex_table('Doctor', doctor_baseline, doctor_partition)
+        doctor_baseline = get_baseline_results(
+            args.results_dir, 'doctor', args.doctor_baseline_tag, args.n_seeds
+        )
+        doctor_partition = get_partition_results(
+            args.results_dir, args.doctor_partition_tag, args.n_seeds,
+            alpha=args.alpha, score=args.score,
+        )
+        doctor_table = generate_latex_table('Doctor', doctor_baseline, doctor_partition)
 
-    # Save with parameters
-    doctor_tag = f"doctor_vs_um{args.tag_suffix}" if args.tag_suffix else "doctor_vs_um"
-    doctor_params = {
-        'score_name': 'Doctor',
-        'baseline': {
-            'postprocessor': 'doctor',
-            'run_tag': args.doctor_baseline_tag,
-            'selection': 'best on res (minimize FPR@95)',
-        },
-        'partition': {
-            'run_tag': args.doctor_partition_tag,
-            **partition_params,
-        },
-        'n_seeds': args.n_seeds,
-        'results_dir': str(args.results_dir),
-    }
-    doctor_dir = save_table_with_params(args.output_dir, doctor_tag, doctor_table, doctor_params)
-    print(f"\nSaved to: {doctor_dir}/")
-    print(f"  - table.tex")
-    print(f"  - params.yml")
-    print("\n" + doctor_table)
+        # Save with parameters
+        doctor_tag = f"doctor_vs_um{args.tag_suffix}" if args.tag_suffix else "doctor_vs_um"
+        doctor_params = {
+            'score_name': 'Doctor',
+            'baseline': {
+                'postprocessor': 'doctor',
+                'run_tag': args.doctor_baseline_tag,
+                'selection': 'best on res (minimize FPR@95)',
+            },
+            'partition': {
+                'run_tag': args.doctor_partition_tag,
+                **partition_params,
+            },
+            'n_seeds': args.n_seeds,
+            'results_dir': str(args.results_dir),
+        }
+        doctor_dir = save_table_with_params(args.output_dir, doctor_tag, doctor_table, doctor_params)
+        print(f"\nSaved to: {doctor_dir}/")
+        print(f"  - table.tex")
+        print(f"  - params.yml")
+        print("\n" + doctor_table)
 
     # Print data availability summary
     print("\n" + "=" * 60)
     print("DATA AVAILABILITY SUMMARY")
     print("=" * 60)
 
-    print("\nMargin baseline:")
-    for r in margin_baseline:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if margin_baseline:
+        print("\nMargin baseline:")
+        for r in margin_baseline:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
-    print("\nMargin partition (UM):")
-    for r in margin_partition:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if margin_partition:
+        print("\nMargin partition (UM):")
+        for r in margin_partition:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
-    print("\nMSP baseline:")
-    for r in msp_baseline:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if msp_baseline:
+        print("\nMSP baseline:")
+        for r in msp_baseline:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
-    print("\nMSP partition (UM):")
-    for r in msp_partition:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if msp_partition:
+        print("\nMSP partition (UM):")
+        for r in msp_partition:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
-    print("\nDoctor baseline:")
-    for r in doctor_baseline:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if doctor_baseline:
+        print("\nDoctor baseline:")
+        for r in doctor_baseline:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
-    print("\nDoctor partition (UM):")
-    for r in doctor_partition:
-        print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
+    if doctor_partition:
+        print("\nDoctor partition (UM):")
+        for r in doctor_partition:
+            print(f"  {r['dataset']}/{r['model']}: {r['n_seeds']} seeds")
 
 
 if __name__ == '__main__':
