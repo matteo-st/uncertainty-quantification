@@ -14,14 +14,17 @@ Usage:
     python scripts/generate_results_tables.py
 
 Output:
-    - docs/margin_results_table.tex
-    - docs/msp_results_table.tex
+    docs/tables/<tag>/
+    ├── table.tex          # LaTeX table
+    └── params.yml         # Parameters used to generate the table
 """
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import argparse
+import json
+from datetime import datetime
 
 
 # Rice Rule K values (closest grid value to ceil(2 * n^(1/3)))
@@ -265,6 +268,52 @@ def generate_latex_table(
     return '\n'.join(lines)
 
 
+def save_table_with_params(
+    output_dir: Path,
+    tag: str,
+    table_content: str,
+    params: dict,
+) -> Path:
+    """
+    Save table and parameters to a tagged subfolder.
+
+    Args:
+        output_dir: Base output directory (e.g., docs/tables)
+        tag: Tag for the subfolder (e.g., 'margin_vs_um_20260120')
+        table_content: LaTeX table content
+        params: Dictionary of parameters used to generate the table
+
+    Returns:
+        Path to the created subfolder
+    """
+    # Create subfolder
+    table_dir = output_dir / tag
+    table_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save table
+    table_path = table_dir / 'table.tex'
+    table_path.write_text(table_content)
+
+    # Save parameters as YAML-like format
+    params_path = table_dir / 'params.yml'
+    params_lines = [
+        f"# Parameters used to generate this table",
+        f"# Generated: {datetime.now().isoformat()}",
+        "",
+    ]
+    for key, value in params.items():
+        if isinstance(value, dict):
+            params_lines.append(f"{key}:")
+            for k, v in value.items():
+                params_lines.append(f"  {k}: {v}")
+        else:
+            params_lines.append(f"{key}: {value}")
+
+    params_path.write_text('\n'.join(params_lines))
+
+    return table_dir
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Generate LaTeX results tables for Margin and MSP experiments.'
@@ -278,8 +327,8 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=Path,
-        default=Path('docs'),
-        help='Path to output directory (default: docs)',
+        default=Path('docs/tables'),
+        help='Path to output directory (default: docs/tables)',
     )
     parser.add_argument(
         '--margin-baseline-tag',
@@ -307,10 +356,37 @@ def main():
         default=9,
         help='Number of seeds to aggregate (default: 9)',
     )
+    parser.add_argument(
+        '--alpha',
+        type=float,
+        default=0.05,
+        help='Alpha for partition binning (default: 0.05)',
+    )
+    parser.add_argument(
+        '--score',
+        type=str,
+        default='upper',
+        choices=['mean', 'upper'],
+        help='Score type for partition binning (default: upper)',
+    )
+    parser.add_argument(
+        '--tag-suffix',
+        type=str,
+        default='',
+        help='Optional suffix to add to table tags',
+    )
     args = parser.parse_args()
 
     # Ensure output directory exists
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Common partition parameters
+    partition_params = {
+        'alpha': args.alpha,
+        'score': args.score,
+        'k_selection': 'rice_rule',
+        'rice_k': RICE_K,
+    }
 
     # Generate Margin table
     print("=" * 60)
@@ -321,13 +397,31 @@ def main():
         args.results_dir, 'margin', args.margin_baseline_tag, args.n_seeds
     )
     margin_partition = get_partition_results(
-        args.results_dir, args.margin_partition_tag, args.n_seeds
+        args.results_dir, args.margin_partition_tag, args.n_seeds,
+        alpha=args.alpha, score=args.score,
     )
     margin_table = generate_latex_table('Margin', margin_baseline, margin_partition)
 
-    margin_output = args.output_dir / 'margin_results_table.tex'
-    margin_output.write_text(margin_table)
-    print(f"\nSaved to: {margin_output}")
+    # Save with parameters
+    margin_tag = f"margin_vs_um{args.tag_suffix}" if args.tag_suffix else "margin_vs_um"
+    margin_params = {
+        'score_name': 'Margin',
+        'baseline': {
+            'postprocessor': 'margin',
+            'run_tag': args.margin_baseline_tag,
+            'selection': 'best on res (minimize FPR@95)',
+        },
+        'partition': {
+            'run_tag': args.margin_partition_tag,
+            **partition_params,
+        },
+        'n_seeds': args.n_seeds,
+        'results_dir': str(args.results_dir),
+    }
+    margin_dir = save_table_with_params(args.output_dir, margin_tag, margin_table, margin_params)
+    print(f"\nSaved to: {margin_dir}/")
+    print(f"  - table.tex")
+    print(f"  - params.yml")
     print("\n" + margin_table)
 
     # Generate MSP table
@@ -340,13 +434,31 @@ def main():
         args.results_dir, 'odin', args.msp_baseline_tag, args.n_seeds
     )
     msp_partition = get_partition_results(
-        args.results_dir, args.msp_partition_tag, args.n_seeds
+        args.results_dir, args.msp_partition_tag, args.n_seeds,
+        alpha=args.alpha, score=args.score,
     )
     msp_table = generate_latex_table('MSP', msp_baseline, msp_partition)
 
-    msp_output = args.output_dir / 'msp_results_table.tex'
-    msp_output.write_text(msp_table)
-    print(f"\nSaved to: {msp_output}")
+    # Save with parameters
+    msp_tag = f"msp_vs_um{args.tag_suffix}" if args.tag_suffix else "msp_vs_um"
+    msp_params = {
+        'score_name': 'MSP',
+        'baseline': {
+            'postprocessor': 'odin',
+            'run_tag': args.msp_baseline_tag,
+            'selection': 'best on res (minimize FPR@95)',
+        },
+        'partition': {
+            'run_tag': args.msp_partition_tag,
+            **partition_params,
+        },
+        'n_seeds': args.n_seeds,
+        'results_dir': str(args.results_dir),
+    }
+    msp_dir = save_table_with_params(args.output_dir, msp_tag, msp_table, msp_params)
+    print(f"\nSaved to: {msp_dir}/")
+    print(f"  - table.tex")
+    print(f"  - params.yml")
     print("\n" + msp_table)
 
     # Print data availability summary
