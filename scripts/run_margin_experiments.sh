@@ -19,6 +19,7 @@ RUN_TAG_BASELINE="margin-grid-20260120"
 RUN_TAG_BINNING="margin-unif-mass-grid-20260120"
 DATASET_CIFAR10="configs/datasets/cifar10/cifar10_n_res-1000_n-cal-4000_all-seeds.yml"
 DATASET_CIFAR100="configs/datasets/cifar100/cifar100_n_res-1000_n-cal-4000_all-seeds.yml"
+DATASET_IMAGENET="configs/datasets/imagenet/imagenet_n_res-5000_n-cal-20000.yml"
 
 DATA_DIR="${DATA_DIR:-./data}"
 CHECKPOINTS_DIR="${CHECKPOINTS_DIR:-./checkpoints}"
@@ -28,12 +29,12 @@ mkdir -p logs
 
 run_step1() {
     echo "=== Step 1: Running Margin Baseline Grid Evaluation ==="
-    echo "Evaluates all 42 grid configs (6 temps × 7 mags) on res, cal, and test splits"
+    echo "CIFAR: 42 grid configs (6 temps × 7 mags), ImageNet: 6 temps (no mag)"
     echo "Results: results/baselines/<dataset>/<model>/margin/runs/${RUN_TAG_BASELINE}/"
-    echo "Starting 4 experiments in parallel..."
+    echo "Starting 6 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
-    echo "[1/4] CIFAR-10 ResNet-34..."
+    echo "[1/6] CIFAR-10 ResNet-34..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_resnet34.yml \
@@ -50,7 +51,7 @@ run_step1() {
     echo "    PID: $PID1"
 
     # CIFAR-10 DenseNet-121
-    echo "[2/4] CIFAR-10 DenseNet-121..."
+    echo "[2/6] CIFAR-10 DenseNet-121..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_densenet121.yml \
@@ -67,7 +68,7 @@ run_step1() {
     echo "    PID: $PID2"
 
     # CIFAR-100 ResNet-34
-    echo "[3/4] CIFAR-100 ResNet-34..."
+    echo "[3/6] CIFAR-100 ResNet-34..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_resnet34.yml \
@@ -84,7 +85,7 @@ run_step1() {
     echo "    PID: $PID3"
 
     # CIFAR-100 DenseNet-121
-    echo "[4/4] CIFAR-100 DenseNet-121..."
+    echo "[4/6] CIFAR-100 DenseNet-121..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_densenet121.yml \
@@ -100,25 +101,61 @@ run_step1() {
     PID4=$!
     echo "    PID: $PID4"
 
+    # ImageNet ViT-Tiny16 (temperature only, no magnitude)
+    echo "[5/6] ImageNet ViT-Tiny16..."
+    nohup python -m error_estimation.experiments.run_detection \
+        --config-dataset "$DATASET_IMAGENET" \
+        --config-model configs/models/imagenet_timm-vit-tiny16.yml \
+        --config-detection configs/postprocessors/margin/imagenet_timm-vit-tiny16_hyperparams_search.yml \
+        --eval-grid \
+        --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
+        --seed-splits 1 2 3 4 5 6 7 8 9 \
+        --data-dir "${DATA_DIR}" \
+        --checkpoints-dir "${CHECKPOINTS_DIR}" \
+        --no-mlflow \
+        > logs/margin_grid_imagenet_vit_tiny16.log 2>&1 &
+    PID5=$!
+    echo "    PID: $PID5"
+
+    # ImageNet ViT-Base16 (temperature only, no magnitude)
+    echo "[6/6] ImageNet ViT-Base16..."
+    nohup python -m error_estimation.experiments.run_detection \
+        --config-dataset "$DATASET_IMAGENET" \
+        --config-model configs/models/imagenet_timm-vit-base16.yml \
+        --config-detection configs/postprocessors/margin/imagenet_timm-vit-base16_hyperparams_search.yml \
+        --eval-grid \
+        --run-tag "$RUN_TAG_BASELINE" \
+        --results-family baselines \
+        --seed-splits 1 2 3 4 5 6 7 8 9 \
+        --data-dir "${DATA_DIR}" \
+        --checkpoints-dir "${CHECKPOINTS_DIR}" \
+        --no-mlflow \
+        > logs/margin_grid_imagenet_vit_base16.log 2>&1 &
+    PID6=$!
+    echo "    PID: $PID6"
+
     echo ""
     echo "All Step 1 experiments started!"
-    echo "PIDs: $PID1, $PID2, $PID3, $PID4"
+    echo "PIDs: $PID1, $PID2, $PID3, $PID4, $PID5, $PID6"
     echo ""
     echo "Monitor with:"
     echo "  tail -f logs/margin_grid_cifar10_resnet34.log"
     echo "  tail -f logs/margin_grid_cifar10_densenet121.log"
     echo "  tail -f logs/margin_grid_cifar100_resnet34.log"
     echo "  tail -f logs/margin_grid_cifar100_densenet121.log"
+    echo "  tail -f logs/margin_grid_imagenet_vit_tiny16.log"
+    echo "  tail -f logs/margin_grid_imagenet_vit_base16.log"
 }
 
 run_step2() {
     echo "=== Step 2: Running Uniform Mass Binning Grid Evaluation ==="
     echo "Evaluates all 30 grid configs (5 n_clusters × 3 alphas × 2 scores) on res, cal, and test splits"
     echo "Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
-    echo "Starting 4 experiments in parallel..."
+    echo "Starting 6 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
-    echo "[1/4] CIFAR-10 ResNet-34..."
+    echo "[1/6] CIFAR-10 ResNet-34..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_resnet34.yml \
@@ -136,7 +173,7 @@ run_step2() {
     echo "    PID: $PID1"
 
     # CIFAR-10 DenseNet-121
-    echo "[2/4] CIFAR-10 DenseNet-121..."
+    echo "[2/6] CIFAR-10 DenseNet-121..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_densenet121.yml \
@@ -154,7 +191,7 @@ run_step2() {
     echo "    PID: $PID2"
 
     # CIFAR-100 ResNet-34
-    echo "[3/4] CIFAR-100 ResNet-34..."
+    echo "[3/6] CIFAR-100 ResNet-34..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_resnet34.yml \
@@ -172,7 +209,7 @@ run_step2() {
     echo "    PID: $PID3"
 
     # CIFAR-100 DenseNet-121
-    echo "[4/4] CIFAR-100 DenseNet-121..."
+    echo "[4/6] CIFAR-100 DenseNet-121..."
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_densenet121.yml \
@@ -189,15 +226,53 @@ run_step2() {
     PID4=$!
     echo "    PID: $PID4"
 
+    # ImageNet ViT-Tiny16
+    echo "[5/6] ImageNet ViT-Tiny16..."
+    nohup python -m error_estimation.experiments.run_detection \
+        --config-dataset "$DATASET_IMAGENET" \
+        --config-model configs/models/imagenet_timm-vit-tiny16.yml \
+        --config-detection configs/postprocessors/partition/imagenet_vit_tiny16_margin-unif-mass.yml \
+        --eval-grid \
+        --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
+        --seed-splits 1 2 3 4 5 6 7 8 9 \
+        --data-dir "${DATA_DIR}" \
+        --checkpoints-dir "${CHECKPOINTS_DIR}" \
+        --logits-dtype float64 \
+        --no-mlflow \
+        > logs/margin_unif_mass_grid_imagenet_vit_tiny16.log 2>&1 &
+    PID5=$!
+    echo "    PID: $PID5"
+
+    # ImageNet ViT-Base16
+    echo "[6/6] ImageNet ViT-Base16..."
+    nohup python -m error_estimation.experiments.run_detection \
+        --config-dataset "$DATASET_IMAGENET" \
+        --config-model configs/models/imagenet_timm-vit-base16.yml \
+        --config-detection configs/postprocessors/partition/imagenet_vit_base16_margin-unif-mass.yml \
+        --eval-grid \
+        --run-tag "$RUN_TAG_BINNING" \
+        --results-family partition_binning \
+        --seed-splits 1 2 3 4 5 6 7 8 9 \
+        --data-dir "${DATA_DIR}" \
+        --checkpoints-dir "${CHECKPOINTS_DIR}" \
+        --logits-dtype float64 \
+        --no-mlflow \
+        > logs/margin_unif_mass_grid_imagenet_vit_base16.log 2>&1 &
+    PID6=$!
+    echo "    PID: $PID6"
+
     echo ""
     echo "All Step 2 experiments started!"
-    echo "PIDs: $PID1, $PID2, $PID3, $PID4"
+    echo "PIDs: $PID1, $PID2, $PID3, $PID4, $PID5, $PID6"
     echo ""
     echo "Monitor with:"
     echo "  tail -f logs/margin_unif_mass_grid_cifar10_resnet34.log"
     echo "  tail -f logs/margin_unif_mass_grid_cifar10_densenet121.log"
     echo "  tail -f logs/margin_unif_mass_grid_cifar100_resnet34.log"
     echo "  tail -f logs/margin_unif_mass_grid_cifar100_densenet121.log"
+    echo "  tail -f logs/margin_unif_mass_grid_imagenet_vit_tiny16.log"
+    echo "  tail -f logs/margin_unif_mass_grid_imagenet_vit_base16.log"
 }
 
 check_status() {
