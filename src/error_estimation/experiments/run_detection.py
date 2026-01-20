@@ -632,6 +632,24 @@ def _evaluate_grid(
                 res_rows.append(row)
             res_results = pd.DataFrame(res_rows)
 
+    # Evaluate res split for non-partition postprocessors (e.g., margin, odin/msp)
+    if detection_cfg.get("name") != "partition":
+        exp_args = detection_cfg.get("experience_args", {})
+        n_epochs = exp_args.get("n_epochs", {})
+        if n_epochs.get("res") is not None and data_cfg.get("n_samples", {}).get("res", 0) > 0 and res_loader is not None:
+            res_eval = AblationDetector(
+                model=model,
+                dataloader=res_loader,
+                device=device,
+                suffix="res",
+                latent_path=latent_paths["res"],
+                postprocessor_name=detection_cfg["name"],
+                cfg_dataset=data_cfg,
+                result_folder=str(run_dir),
+                logits_dtype=logits_dtype,
+            )
+            res_results = pd.concat(res_eval.evaluate(grid, detectors=detectors, suffix="res"), axis=0)
+
     if detection_cfg.get("name") == "partition" and use_perturbed_logits:
         test_values = _load_latent_values(
             dataloader=test_loader,
