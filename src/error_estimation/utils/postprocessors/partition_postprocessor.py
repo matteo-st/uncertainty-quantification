@@ -403,7 +403,7 @@ class PartitionPostprocessor(BasePostprocessor):
             if all_embs.dim() > 1 and all_embs.size(1) == 1:
                 all_embs = all_embs.squeeze(1)
              # internal quantiles: (n_clusters - 1) edges
-            q = torch.linspace(0.0, 1.0, self.n_clusters + 1, device=all_embs.device)[1:-1]
+            q = torch.linspace(0.0, 1.0, self.n_clusters + 1, device=all_embs.device, dtype=all_embs.dtype)[1:-1]
             bin_edges = torch.quantile(all_embs, q)
             self.bin_edges = bin_edges.detach().cpu()  # store on CPU
             clusters = torch.bucketize(all_embs, self.bin_edges.to(all_embs.device))
