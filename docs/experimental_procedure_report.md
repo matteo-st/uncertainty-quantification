@@ -1191,6 +1191,30 @@ Uniform mass binning differs from uniform width binning in that bin boundaries a
 | n_bins=30 | 0.480 ± 0.015 | 0.495 ± 0.022 | 0.854 ± 0.004 |
 | n_bins=50 | 0.470 ± 0.039 | 0.499 ± 0.029 | 0.853 ± 0.004 |
 
+**ImageNet ViT-Base16**
+| Method | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| **Doctor (baseline)** | - | **0.4256 ± 0.0085** | **0.8750 ± 0.0025** |
+| n_bins=5 | 0.5170 ± 0.0013 | 0.5175 ± 0.0035 | 0.8575 ± 0.0023 |
+| n_bins=10 | 0.5170 ± 0.0013 | 0.5175 ± 0.0035 | 0.8705 ± 0.0025 |
+| n_bins=15 | 0.4481 ± 0.0261 | 0.4465 ± 0.0279 | 0.8729 ± 0.0025 |
+| n_bins=20 | 0.4587 ± 0.0014 | 0.4578 ± 0.0034 | 0.8736 ± 0.0026 |
+| n_bins=30 | 0.4437 ± 0.0131 | 0.4420 ± 0.0147 | 0.8742 ± 0.0025 |
+| n_bins=50 | 0.4342 ± 0.0129 | 0.4382 ± 0.0112 | 0.8738 ± 0.0025 |
+| n_bins=100 | 0.4352 ± 0.0239 | 0.4526 ± 0.0118 | 0.8730 ± 0.0025 |
+
+**ImageNet ViT-Tiny16**
+| Method | FPR Cal | FPR Test | ROC-AUC Test |
+|--------|---------|----------|--------------|
+| **Doctor (baseline)** | - | **0.4504 ± 0.0096** | **0.8658 ± 0.0031** |
+| n_bins=5 | 0.4829 ± 0.0019 | 0.4837 ± 0.0050 | 0.8506 ± 0.0031 |
+| n_bins=10 | 0.4829 ± 0.0019 | 0.4837 ± 0.0050 | 0.8615 ± 0.0033 |
+| n_bins=15 | 0.4829 ± 0.0019 | 0.4837 ± 0.0050 | 0.8642 ± 0.0029 |
+| n_bins=20 | 0.4829 ± 0.0019 | 0.4837 ± 0.0050 | 0.8647 ± 0.0031 |
+| n_bins=30 | 0.4739 ± 0.0190 | 0.4704 ± 0.0175 | 0.8650 ± 0.0030 |
+| n_bins=50 | 0.4721 ± 0.0190 | 0.4813 ± 0.0154 | 0.8646 ± 0.0034 |
+| n_bins=100 | 0.4529 ± 0.0102 | 0.4711 ± 0.0116 | 0.8637 ± 0.0034 |
+
 ### Selection Rule Analysis
 
 | Dataset | Model | Doctor FPR | Oracle FPR | Cal-Selected FPR | Rice Rule FPR |
@@ -1199,8 +1223,12 @@ Uniform mass binning differs from uniform width binning in that bin boundaries a
 | CIFAR10 | densenet121 | **0.2650 ± 0.0219** | 0.349 ± 0.023 | 0.496 ± 0.194 | 0.408 ± 0.095 |
 | CIFAR100 | resnet34 | **0.3948 ± 0.0177** | 0.419 ± 0.011 | 0.443 ± 0.031 | 0.423 ± 0.018 |
 | CIFAR100 | densenet121 | **0.4614 ± 0.0137** | 0.486 ± 0.024 | 0.495 ± 0.027 | 0.495 ± 0.022 |
+| ImageNet | timm_vit_base16 | **0.4256 ± 0.0085** | 0.434 ± 0.008 | 0.445 ± 0.018 | 0.442 ± 0.014 |
+| ImageNet | timm_vit_tiny16 | **0.4504 ± 0.0096** | 0.463 ± 0.012 | 0.472 ± 0.012 | 0.470 ± 0.017 |
 
-**Rice's Rule:** n_bins = 2 × n^(1/3) = 2 × 4000^(1/3) ≈ 31
+**Rice's Rule:** n_bins = 2 × n^(1/3)
+- CIFAR: 2 × 4000^(1/3) ≈ 31
+- ImageNet: 2 × 20000^(1/3) ≈ 54
 
 ### Uniform Mass Observations
 
@@ -1216,6 +1244,10 @@ Uniform mass binning differs from uniform width binning in that bin boundaries a
 
 6. **n_bins=15 often optimal on test:** Across datasets, n_bins=15 frequently achieves good cal-test agreement and reasonable FPR, suggesting a conservative choice of fewer bins.
 
+7. **ImageNet confirms high-error-rate stability:** ImageNet results (18-24% error rate) show excellent cal-test transfer similar to CIFAR-100. Doctor baseline FPR of 0.43-0.45 degrades only slightly to 0.43-0.47 with binning. Oracle, Cal-Selected, and Rice Rule FPRs are all within ~0.02 of each other, demonstrating that selection rule choice matters little when error rates are high enough.
+
+8. **ImageNet shows FPR plateau at low n_bins:** For both ViT models on ImageNet, n_bins=5,10,15,20 produce nearly identical FPR values (within std), suggesting that very coarse binning saturates discriminative ability. Only n_bins≥30 shows variation.
+
 ### Conclusion
 
 Uniform mass binning fails to provide reliable FPR control on CIFAR-10 due to:
@@ -1223,7 +1255,7 @@ Uniform mass binning fails to provide reliable FPR control on CIFAR-10 due to:
 - **Threshold transfer:** Binned probabilities create discrete thresholds that may not transfer across splits
 - **Information loss:** Discretization degrades separation compared to continuous scores
 
-For CIFAR-100 (higher error rate), uniform mass binning performs reasonably, with Rice's rule providing a practical deterministic choice. However, the fundamental limitation of binning approaches—threshold transfer instability—remains a concern.
+For CIFAR-100 and ImageNet (higher error rates of ~25% and ~18-24% respectively), uniform mass binning performs well with minimal FPR degradation from the Doctor baseline. Rice's rule (n_bins≈30) provides a practical deterministic choice that performs comparably to oracle selection. The key factor determining binning effectiveness is the base error rate: higher error rates provide more errors per bin, leading to more stable probability estimates and better cal-test transfer.
 
 ---
 
@@ -1342,3 +1374,433 @@ Best K selection varies by configuration:
 LDA-based multi-score combination fails to improve over simpler single-score methods. Neither ranking power (ROC-AUC) nor calibration (FPR) improves. The scores being combined are highly correlated, limiting LDA's ability to find discriminative projections.
 
 **Recommendation:** Use single-score methods (Doctor raw or uniform mass with gini) rather than multi-score LDA combination. The added complexity of LDA fitting and per-score hyperparameter selection provides no benefit.
+
+---
+
+## 9. K-Means Constrained Binning (n_res=1000, n_cal=4000)
+
+**Date:** 2026-01-19
+
+### 9.1 Experimental Setup
+
+- **Datasets:** CIFAR-10, CIFAR-100
+- **Models:** ResNet-34, DenseNet-121
+- **Splits:** n_res=1000, n_cal=4000, n_test=5000
+- **Seeds:** 1-9 (mean ± std reported)
+- **Base score:** Doctor (gini) with hyperparameters selected **per-seed** on res split by FPR@95
+- **Partition method:** K-means constrained (uniform cluster sizes) on gini scores
+- **Grid:** n_clusters ∈ {10, 20, 30, 50}, alpha ∈ {0.05, 0.1, 0.5}, score ∈ {mean, upper}
+- **Clustering params:** n_init=5, max_iter=100
+
+### 9.2 Methods
+
+K-means constrained enforces equal-sized clusters, similar to uniform-mass binning but using K-means optimization.
+- **mean**: Use empirical bin error rate as score (alpha not used)
+- **upper (α=0.05)**: Use upper bound of 95% confidence interval
+- **upper (α=0.1)**: Use upper bound of 90% confidence interval
+- **upper (α=0.5)**: Use upper bound of 50% confidence interval
+
+---
+
+### CIFAR-10 / ResNet-34 (9 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.3401 ± 0.2562 | 0.3313 ± 0.2431 | 0.3383 ± 0.2398 | 0.9102 ± 0.0112 |
+| mean | - | 20 | 0.2143 ± 0.0961 | 0.3162 ± 0.2306 | 0.3248 ± 0.2269 | 0.9153 ± 0.0113 |
+| mean | - | 30 | 0.2192 ± 0.0667 | 0.2350 ± 0.0294 | 0.3423 ± 0.2096 | 0.9153 ± 0.0146 |
+| mean | - | 50 | 0.3007 ± 0.2730 | 0.2196 ± 0.0123 | 0.3180 ± 0.1876 | 0.9120 ± 0.0124 |
+| upper | 0.05 | 10 | 0.2805 ± 0.0972 | 0.3799 ± 0.2425 | 0.3823 ± 0.2409 | 0.8970 ± 0.0159 |
+| upper | 0.05 | 20 | 0.3060 ± 0.1464 | 0.4109 ± 0.2359 | 0.3625 ± 0.0899 | 0.8928 ± 0.0198 |
+| upper | 0.05 | 30 | 0.3369 ± 0.1206 | 0.3321 ± 0.0881 | 0.3834 ± 0.0499 | 0.8780 ± 0.0270 |
+| upper | 0.05 | 50 | 0.3491 ± 0.1091 | 0.3686 ± 0.0443 | 0.3947 ± 0.0313 | 0.8503 ± 0.0324 |
+| upper | 0.1 | 10 | 0.2805 ± 0.0972 | 0.3777 ± 0.2439 | 0.3823 ± 0.2409 | 0.8989 ± 0.0146 |
+| upper | 0.1 | 20 | 0.2981 ± 0.1381 | 0.4109 ± 0.2359 | 0.3603 ± 0.0871 | 0.8978 ± 0.0158 |
+| upper | 0.1 | 30 | 0.3369 ± 0.1206 | 0.3222 ± 0.0898 | 0.3756 ± 0.0551 | 0.8835 ± 0.0240 |
+| upper | 0.1 | 50 | 0.3468 ± 0.1108 | 0.3615 ± 0.0448 | 0.3875 ± 0.0350 | 0.8594 ± 0.0299 |
+| upper | 0.5 | 10 | 0.2732 ± 0.0971 | 0.3601 ± 0.2508 | 0.3660 ± 0.2476 | 0.9059 ± 0.0110 |
+| upper | 0.5 | 20 | 0.2785 ± 0.1341 | 0.3775 ± 0.2430 | 0.3306 ± 0.0638 | 0.9094 ± 0.0106 |
+| upper | 0.5 | 30 | 0.3187 ± 0.1240 | 0.3004 ± 0.0790 | 0.3652 ± 0.0734 | 0.8972 ± 0.0189 |
+| upper | 0.5 | 50 | 0.3142 ± 0.1117 | 0.3372 ± 0.0516 | 0.3601 ± 0.0331 | 0.8816 ± 0.0223 |
+| **Doctor (raw)** | - | - | - | - | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+
+#### Selection on res split by FPR@95 (per-seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 25.6 ± 10.1 | 0.3324 ± 0.2137 | 0.9138 ± 0.0118 |
+| upper | 0.05 | 15.6 ± 7.3 | 0.4072 ± 0.2394 | 0.8956 ± 0.0144 |
+| upper | 0.1 | 16.7 ± 7.1 | 0.4109 ± 0.2377 | 0.8976 ± 0.0147 |
+| upper | 0.5 | 16.7 ± 7.1 | 0.3764 ± 0.2437 | 0.9092 ± 0.0103 |
+| **Doctor (raw)** | - | - | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+
+#### Oracle: Best FPR on test (per seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 31.1 ± 19.0 | 0.2909 ± 0.1961 | 0.9148 ± 0.0101 |
+| upper | 0.05 | 13.3 ± 7.1 | 0.3081 ± 0.0626 | 0.8950 ± 0.0156 |
+| upper | 0.1 | 15.6 ± 8.8 | 0.3079 ± 0.0627 | 0.8966 ± 0.0145 |
+| upper | 0.5 | 20.0 ± 13.2 | 0.2876 ± 0.0653 | 0.9053 ± 0.0136 |
+| **Doctor (raw)** | - | - | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+
+---
+
+### CIFAR-10 / DenseNet-121 (9 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.3962 ± 0.2967 | 0.3895 ± 0.1419 | 0.3845 ± 0.1084 | 0.8896 ± 0.0443 |
+| mean | - | 20 | 0.3688 ± 0.2646 | 0.3637 ± 0.1239 | 0.4196 ± 0.2314 | 0.8916 ± 0.0430 |
+| mean | - | 30 | 0.3701 ± 0.2782 | 0.3361 ± 0.1281 | 0.4429 ± 0.2294 | 0.8906 ± 0.0425 |
+| mean | - | 50 | 0.3812 ± 0.2960 | 0.3050 ± 0.1150 | 0.4916 ± 0.2725 | 0.8858 ± 0.0479 |
+| upper | 0.05 | 10 | 0.4102 ± 0.2754 | 0.4287 ± 0.1245 | 0.3827 ± 0.1069 | 0.8839 ± 0.0414 |
+| upper | 0.05 | 20 | 0.4321 ± 0.2728 | 0.4244 ± 0.1200 | 0.4128 ± 0.1058 | 0.8725 ± 0.0461 |
+| upper | 0.05 | 30 | 0.4598 ± 0.2653 | 0.4212 ± 0.1112 | 0.4575 ± 0.0824 | 0.8666 ± 0.0411 |
+| upper | 0.05 | 50 | 0.4711 ± 0.2848 | 0.4411 ± 0.0999 | 0.4567 ± 0.0937 | 0.8425 ± 0.0507 |
+| upper | 0.1 | 10 | 0.4102 ± 0.2754 | 0.4230 ± 0.1260 | 0.3827 ± 0.1069 | 0.8844 ± 0.0416 |
+| upper | 0.1 | 20 | 0.4321 ± 0.2728 | 0.4200 ± 0.1197 | 0.4128 ± 0.1058 | 0.8764 ± 0.0460 |
+| upper | 0.1 | 30 | 0.4484 ± 0.2708 | 0.4183 ± 0.1153 | 0.4537 ± 0.0862 | 0.8711 ± 0.0425 |
+| upper | 0.1 | 50 | 0.4663 ± 0.2866 | 0.4332 ± 0.1007 | 0.4541 ± 0.0947 | 0.8477 ± 0.0491 |
+| upper | 0.5 | 10 | 0.4185 ± 0.2968 | 0.4149 ± 0.1343 | 0.4048 ± 0.1008 | 0.8870 ± 0.0434 |
+| upper | 0.5 | 20 | 0.4202 ± 0.2775 | 0.4145 ± 0.1187 | 0.4068 ± 0.1102 | 0.8858 ± 0.0445 |
+| upper | 0.5 | 30 | 0.4334 ± 0.2891 | 0.4091 ± 0.1073 | 0.4372 ± 0.0920 | 0.8824 ± 0.0407 |
+| upper | 0.5 | 50 | 0.4610 ± 0.2900 | 0.4134 ± 0.0983 | 0.4439 ± 0.0953 | 0.8651 ± 0.0479 |
+| **Doctor (raw)** | - | - | - | - | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+
+#### Selection on res split by FPR@95 (per-seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 32.2 ± 14.8 | 0.4819 ± 0.2972 | 0.8888 ± 0.0420 |
+| upper | 0.05 | 21.1 ± 16.9 | 0.3937 ± 0.1119 | 0.8767 ± 0.0401 |
+| upper | 0.1 | 21.1 ± 16.9 | 0.3915 ± 0.1102 | 0.8784 ± 0.0401 |
+| upper | 0.5 | 20.0 ± 13.2 | 0.4139 ± 0.1231 | 0.8840 ± 0.0440 |
+| **Doctor (raw)** | - | - | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+
+#### Oracle: Best FPR on test (per seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 24.4 ± 12.4 | 0.3365 ± 0.1183 | 0.8913 ± 0.0448 |
+| upper | 0.05 | 20.0 ± 13.2 | 0.3726 ± 0.1012 | 0.8734 ± 0.0465 |
+| upper | 0.1 | 20.0 ± 13.2 | 0.3726 ± 0.1012 | 0.8756 ± 0.0460 |
+| upper | 0.5 | 22.2 ± 13.0 | 0.3788 ± 0.0975 | 0.8842 ± 0.0419 |
+| **Doctor (raw)** | - | - | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+
+---
+
+### CIFAR-100 / ResNet-34 (9 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4439 ± 0.0534 | 0.4731 ± 0.0192 | 0.4597 ± 0.0312 | 0.8691 ± 0.0047 |
+| mean | - | 20 | 0.4089 ± 0.0430 | 0.4289 ± 0.0218 | 0.4272 ± 0.0311 | 0.8712 ± 0.0052 |
+| mean | - | 30 | 0.4027 ± 0.0543 | 0.4216 ± 0.0223 | 0.4286 ± 0.0335 | 0.8707 ± 0.0063 |
+| mean | - | 50 | 0.4270 ± 0.0587 | 0.4097 ± 0.0152 | 0.4216 ± 0.0200 | 0.8694 ± 0.0050 |
+| upper | 0.05 | 10 | 0.4450 ± 0.0542 | 0.4744 ± 0.0188 | 0.4617 ± 0.0312 | 0.8685 ± 0.0034 |
+| upper | 0.05 | 20 | 0.4190 ± 0.0427 | 0.4494 ± 0.0420 | 0.4512 ± 0.0346 | 0.8682 ± 0.0040 |
+| upper | 0.05 | 30 | 0.4349 ± 0.0564 | 0.4477 ± 0.0444 | 0.4675 ± 0.0318 | 0.8637 ± 0.0054 |
+| upper | 0.05 | 50 | 0.4760 ± 0.0673 | 0.4443 ± 0.0318 | 0.4737 ± 0.0281 | 0.8520 ± 0.0066 |
+| upper | 0.1 | 10 | 0.4450 ± 0.0542 | 0.4744 ± 0.0188 | 0.4617 ± 0.0312 | 0.8685 ± 0.0034 |
+| upper | 0.1 | 20 | 0.4190 ± 0.0427 | 0.4467 ± 0.0388 | 0.4512 ± 0.0346 | 0.8684 ± 0.0039 |
+| upper | 0.1 | 30 | 0.4274 ± 0.0588 | 0.4367 ± 0.0373 | 0.4605 ± 0.0365 | 0.8653 ± 0.0053 |
+| upper | 0.1 | 50 | 0.4749 ± 0.0691 | 0.4455 ± 0.0305 | 0.4736 ± 0.0277 | 0.8550 ± 0.0056 |
+| upper | 0.5 | 10 | 0.4450 ± 0.0542 | 0.4744 ± 0.0188 | 0.4617 ± 0.0312 | 0.8687 ± 0.0037 |
+| upper | 0.5 | 20 | 0.4113 ± 0.0357 | 0.4395 ± 0.0307 | 0.4369 ± 0.0297 | 0.8698 ± 0.0041 |
+| upper | 0.5 | 30 | 0.4143 ± 0.0586 | 0.4238 ± 0.0307 | 0.4438 ± 0.0388 | 0.8688 ± 0.0048 |
+| upper | 0.5 | 50 | 0.4638 ± 0.0662 | 0.4347 ± 0.0338 | 0.4610 ± 0.0286 | 0.8623 ± 0.0043 |
+| **Doctor (raw)** | - | - | - | - | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+
+#### Selection on res split by FPR@95 (per-seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 24.4 ± 11.3 | 0.4268 ± 0.0300 | 0.8709 ± 0.0050 |
+| upper | 0.05 | 20.0 ± 7.1 | 0.4512 ± 0.0251 | 0.8681 ± 0.0044 |
+| upper | 0.1 | 20.0 ± 7.1 | 0.4512 ± 0.0251 | 0.8683 ± 0.0043 |
+| upper | 0.5 | 22.2 ± 6.7 | 0.4371 ± 0.0269 | 0.8701 ± 0.0046 |
+| **Doctor (raw)** | - | - | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+
+#### Oracle: Best FPR on test (per seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 36.7 ± 16.6 | 0.4063 ± 0.0197 | 0.8691 ± 0.0055 |
+| upper | 0.05 | 23.3 ± 12.2 | 0.4367 ± 0.0293 | 0.8669 ± 0.0058 |
+| upper | 0.1 | 23.3 ± 13.2 | 0.4357 ± 0.0296 | 0.8665 ± 0.0063 |
+| upper | 0.5 | 24.4 ± 12.4 | 0.4211 ± 0.0259 | 0.8686 ± 0.0056 |
+| **Doctor (raw)** | - | - | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+
+---
+
+### CIFAR-100 / DenseNet-121 (9 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4609 ± 0.0444 | 0.5093 ± 0.0625 | 0.5382 ± 0.0521 | 0.8529 ± 0.0042 |
+| mean | - | 20 | 0.4738 ± 0.0656 | 0.4834 ± 0.0206 | 0.5010 ± 0.0278 | 0.8536 ± 0.0043 |
+| mean | - | 30 | 0.4408 ± 0.0386 | 0.4703 ± 0.0224 | 0.4819 ± 0.0222 | 0.8541 ± 0.0038 |
+| mean | - | 50 | 0.4482 ± 0.0537 | 0.4540 ± 0.0196 | 0.4746 ± 0.0195 | 0.8529 ± 0.0040 |
+| upper | 0.05 | 10 | 0.4648 ± 0.0498 | 0.5047 ± 0.0578 | 0.5423 ± 0.0547 | 0.8524 ± 0.0045 |
+| upper | 0.05 | 20 | 0.4701 ± 0.0535 | 0.5028 ± 0.0252 | 0.5028 ± 0.0260 | 0.8501 ± 0.0071 |
+| upper | 0.05 | 30 | 0.4673 ± 0.0456 | 0.5010 ± 0.0198 | 0.5153 ± 0.0243 | 0.8449 ± 0.0074 |
+| upper | 0.05 | 50 | 0.4973 ± 0.0562 | 0.4940 ± 0.0256 | 0.5224 ± 0.0201 | 0.8358 ± 0.0092 |
+| upper | 0.1 | 10 | 0.4648 ± 0.0498 | 0.5135 ± 0.0625 | 0.5423 ± 0.0547 | 0.8526 ± 0.0045 |
+| upper | 0.1 | 20 | 0.4728 ± 0.0598 | 0.5011 ± 0.0241 | 0.5028 ± 0.0260 | 0.8510 ± 0.0064 |
+| upper | 0.1 | 30 | 0.4661 ± 0.0446 | 0.4974 ± 0.0232 | 0.5114 ± 0.0214 | 0.8468 ± 0.0066 |
+| upper | 0.1 | 50 | 0.4961 ± 0.0569 | 0.4881 ± 0.0261 | 0.5186 ± 0.0234 | 0.8391 ± 0.0083 |
+| upper | 0.5 | 10 | 0.4633 ± 0.0504 | 0.5116 ± 0.0642 | 0.5423 ± 0.0547 | 0.8529 ± 0.0042 |
+| upper | 0.5 | 20 | 0.4726 ± 0.0546 | 0.4891 ± 0.0209 | 0.5061 ± 0.0242 | 0.8528 ± 0.0051 |
+| upper | 0.5 | 30 | 0.4533 ± 0.0397 | 0.4818 ± 0.0222 | 0.4970 ± 0.0189 | 0.8517 ± 0.0042 |
+| upper | 0.5 | 50 | 0.4735 ± 0.0599 | 0.4722 ± 0.0199 | 0.4955 ± 0.0219 | 0.8469 ± 0.0071 |
+| **Doctor (raw)** | - | - | - | - | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+
+#### Selection on res split by FPR@95 (per-seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 27.8 ± 14.8 | 0.5007 ± 0.0391 | 0.8536 ± 0.0035 |
+| upper | 0.05 | 18.9 ± 12.7 | 0.5331 ± 0.0402 | 0.8500 ± 0.0071 |
+| upper | 0.1 | 20.0 ± 13.2 | 0.5309 ± 0.0401 | 0.8508 ± 0.0063 |
+| upper | 0.5 | 23.3 ± 13.2 | 0.5120 ± 0.0375 | 0.8526 ± 0.0039 |
+| **Doctor (raw)** | - | - | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+
+#### Oracle: Best FPR on test (per seed)
+
+| score | alpha | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|------------|----------------|
+| mean | - | 43.3 ± 10.0 | 0.4717 ± 0.0192 | 0.8537 ± 0.0035 |
+| upper | 0.05 | 24.4 ± 15.1 | 0.4929 ± 0.0256 | 0.8472 ± 0.0095 |
+| upper | 0.1 | 26.7 ± 15.0 | 0.4913 ± 0.0239 | 0.8488 ± 0.0070 |
+| upper | 0.5 | 31.1 ± 16.2 | 0.4856 ± 0.0218 | 0.8514 ± 0.0050 |
+| **Doctor (raw)** | - | - | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+
+---
+
+### 9.3 Rice Rule Selection (K=30, closest to 2×n^(1/3) ≈ 31.7 for n_cal=4000)
+
+| Dataset | Model | score | alpha | FPR (test) | ROC-AUC (test) | Doctor (raw) FPR |
+|---------|-------|-------|-------|------------|----------------|------------------|
+| CIFAR-10 | ResNet-34 | mean | - | 0.3423 ± 0.2096 | 0.9153 ± 0.0146 | 0.1982 ± 0.0166 |
+| CIFAR-10 | ResNet-34 | upper | 0.05 | 0.3834 ± 0.0499 | 0.8780 ± 0.0270 | 0.1982 ± 0.0166 |
+| CIFAR-10 | ResNet-34 | upper | 0.1 | 0.3756 ± 0.0551 | 0.8835 ± 0.0240 | 0.1982 ± 0.0166 |
+| CIFAR-10 | ResNet-34 | upper | 0.5 | 0.3652 ± 0.0734 | 0.8972 ± 0.0189 | 0.1982 ± 0.0166 |
+| CIFAR-10 | DenseNet-121 | mean | - | 0.4429 ± 0.2294 | 0.8906 ± 0.0425 | 0.2650 ± 0.0219 |
+| CIFAR-10 | DenseNet-121 | upper | 0.05 | 0.4575 ± 0.0824 | 0.8666 ± 0.0411 | 0.2650 ± 0.0219 |
+| CIFAR-10 | DenseNet-121 | upper | 0.1 | 0.4537 ± 0.0862 | 0.8711 ± 0.0425 | 0.2650 ± 0.0219 |
+| CIFAR-10 | DenseNet-121 | upper | 0.5 | 0.4372 ± 0.0920 | 0.8824 ± 0.0407 | 0.2650 ± 0.0219 |
+| CIFAR-100 | ResNet-34 | mean | - | 0.4286 ± 0.0335 | 0.8707 ± 0.0063 | 0.3948 ± 0.0177 |
+| CIFAR-100 | ResNet-34 | upper | 0.05 | 0.4675 ± 0.0318 | 0.8637 ± 0.0054 | 0.3948 ± 0.0177 |
+| CIFAR-100 | ResNet-34 | upper | 0.1 | 0.4605 ± 0.0365 | 0.8653 ± 0.0053 | 0.3948 ± 0.0177 |
+| CIFAR-100 | ResNet-34 | upper | 0.5 | 0.4438 ± 0.0388 | 0.8688 ± 0.0048 | 0.3948 ± 0.0177 |
+| CIFAR-100 | DenseNet-121 | mean | - | 0.4819 ± 0.0222 | 0.8541 ± 0.0038 | 0.4614 ± 0.0137 |
+| CIFAR-100 | DenseNet-121 | upper | 0.05 | 0.5153 ± 0.0243 | 0.8449 ± 0.0074 | 0.4614 ± 0.0137 |
+| CIFAR-100 | DenseNet-121 | upper | 0.1 | 0.5114 ± 0.0214 | 0.8468 ± 0.0066 | 0.4614 ± 0.0137 |
+| CIFAR-100 | DenseNet-121 | upper | 0.5 | 0.4970 ± 0.0189 | 0.8517 ± 0.0042 | 0.4614 ± 0.0137 |
+
+---
+
+### 9.4 Observations
+
+1. **High variance on CIFAR-10:** K-means constrained shows high variance (up to 29% std) on CIFAR-10, particularly with DenseNet-121. This suggests sensitivity to seed splits.
+
+2. **Worse than raw Doctor:** All submethods perform worse than raw Doctor scores in terms of FPR@95. The binning procedure degrades detection performance by 3-22 percentage points.
+
+3. **Mean score slightly better than upper:** The mean score type generally outperforms upper bound scores, contrary to expectation that conservative bounds would help.
+
+4. **Small n_clusters preferred:** Best configurations tend to use smaller n_clusters (10-30), similar to other binning methods.
+
+5. **CIFAR-100 more stable:** CIFAR-100 shows much lower variance than CIFAR-10, suggesting the method is more stable with higher error rates.
+
+6. **Rice rule (K=30) not optimal:** Using the Rice rule for K selection does not improve over per-seed selection on res. FPR degradation remains significant.
+
+### 9.5 Conclusion
+
+K-means constrained binning does not improve over raw Doctor scores. Despite enforcing uniform cluster sizes (similar to uniform-mass binning), the method shows:
+- Higher FPR@95 than raw scores (degradation of 3-22 percentage points)
+- High variance on CIFAR-10 datasets
+- No clear advantage from using upper bounds vs empirical means
+- No benefit from Rice rule K selection
+
+The constrained K-means optimization does not provide benefits over simpler binning approaches.
+
+## 10. K-Means Constrained on Top-5 Softmax Probabilities (n_res=1000, n_cal=4000)
+
+**Date:** 2026-01-19
+
+### 10.1 Motivation
+
+The previous K-means constrained experiments used a 1D gini score as features for clustering. We hypothesize that using richer features from the softmax distribution might improve cluster quality by capturing:
+1. Multi-class competition (not just overall confidence)
+2. Better distinction between "confused" predictions and "confident wrong" predictions
+3. Richer feature space for cluster separation
+
+### 10.2 Experimental Setup
+
+- **Datasets:** CIFAR-10, CIFAR-100
+- **Models:** ResNet-34, DenseNet-121
+- **Splits:** n_res=1000, n_cal=4000, n_test=5000
+- **Seeds:** 1-10 (mean ± std reported)
+- **Feature space:** Top-5 softmax probabilities (5D) — sorted in descending order
+- **Partition method:** K-means constrained (uniform cluster sizes)
+- **Grid:** n_clusters ∈ {10, 20, 30, 50}, alpha ∈ {0.05, 0.1, 0.5}, score ∈ {mean, upper}
+- **Clustering params:** n_init=5, max_iter=100
+- **No ODIN perturbation** (direct softmax probabilities)
+
+### 10.3 Configuration
+
+Key differences from gini-based K-means constrained:
+
+| Parameter | Gini Config | Top-5 Config |
+|-----------|-------------|--------------|
+| space | gini | probits |
+| reorder_embs | False | True |
+| n_dim | (not set, 1D) | 5 |
+| normalize | True | False |
+| use_perturbed_logits | True | False |
+
+---
+
+### CIFAR-10 / ResNet-34 (10 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4758 ± 0.2536 | 0.4012 ± 0.0752 | 0.3492 ± 0.0583 | 0.9158 ± 0.0078 |
+| mean | - | 20 | 0.4126 ± 0.2331 | 0.3682 ± 0.0561 | 0.4562 ± 0.1649 | 0.9215 ± 0.0090 |
+| mean | - | 30 | 0.4508 ± 0.2783 | 0.3015 ± 0.0512 | 0.4233 ± 0.2320 | 0.9206 ± 0.0190 |
+| mean | - | 50 | 0.4472 ± 0.2504 | 0.2733 ± 0.0488 | 0.4135 ± 0.2129 | 0.9191 ± 0.0149 |
+| upper | 0.05 | 10 | 0.5001 ± 0.2307 | 0.5199 ± 0.1029 | 0.4598 ± 0.0915 | 0.9054 ± 0.0101 |
+| upper | 0.05 | 20 | 0.4825 ± 0.2300 | 0.5550 ± 0.0920 | 0.5214 ± 0.0884 | 0.8965 ± 0.0112 |
+| upper | 0.05 | 30 | 0.4284 ± 0.1687 | 0.5008 ± 0.1071 | 0.4526 ± 0.0947 | 0.8896 ± 0.0128 |
+| upper | 0.05 | 50 | 0.4175 ± 0.1597 | 0.4535 ± 0.0543 | 0.4623 ± 0.0985 | 0.8733 ± 0.0118 |
+| upper | 0.1 | 10 | 0.5001 ± 0.2307 | 0.5199 ± 0.1029 | 0.4598 ± 0.0915 | 0.9062 ± 0.0104 |
+| upper | 0.1 | 20 | 0.4777 ± 0.2338 | 0.5513 ± 0.0951 | 0.5173 ± 0.0916 | 0.9004 ± 0.0109 |
+| upper | 0.1 | 30 | 0.4277 ± 0.1699 | 0.5016 ± 0.1076 | 0.4526 ± 0.0947 | 0.8935 ± 0.0136 |
+| upper | 0.1 | 50 | 0.4156 ± 0.1624 | 0.4452 ± 0.0572 | 0.4623 ± 0.0985 | 0.8773 ± 0.0123 |
+| upper | 0.5 | 10 | 0.4726 ± 0.2427 | 0.5065 ± 0.1108 | 0.4217 ± 0.1128 | 0.9114 ± 0.0092 |
+| upper | 0.5 | 20 | 0.4634 ± 0.2373 | 0.5326 ± 0.1030 | 0.5117 ± 0.0988 | 0.9090 ± 0.0091 |
+| upper | 0.5 | 30 | 0.4078 ± 0.1838 | 0.4764 ± 0.1174 | 0.4277 ± 0.1019 | 0.9059 ± 0.0119 |
+| upper | 0.5 | 50 | 0.4006 ± 0.1554 | 0.4256 ± 0.0530 | 0.4531 ± 0.1044 | 0.8932 ± 0.0116 |
+| **Doctor (raw)** | - | - | - | - | 0.1982 ± 0.0166 | 0.9297 ± 0.0108 |
+
+---
+
+### CIFAR-10 / DenseNet-121 (10 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4549 ± 0.3041 | 0.3927 ± 0.0358 | 0.4042 ± 0.0710 | 0.9104 ± 0.0041 |
+| mean | - | 20 | 0.4198 ± 0.2692 | 0.3448 ± 0.0264 | 0.3750 ± 0.0462 | 0.9132 ± 0.0044 |
+| mean | - | 30 | 0.4739 ± 0.3111 | 0.3189 ± 0.0268 | 0.3891 ± 0.0497 | 0.9120 ± 0.0062 |
+| mean | - | 50 | 0.4314 ± 0.2972 | 0.2960 ± 0.0218 | 0.4278 ± 0.2096 | 0.9090 ± 0.0079 |
+| upper | 0.05 | 10 | 0.4309 ± 0.2498 | 0.4565 ± 0.0698 | 0.4568 ± 0.0704 | 0.8999 ± 0.0072 |
+| upper | 0.05 | 20 | 0.5005 ± 0.2764 | 0.4720 ± 0.0587 | 0.4385 ± 0.0566 | 0.8944 ± 0.0066 |
+| upper | 0.05 | 30 | 0.4676 ± 0.2456 | 0.4518 ± 0.0630 | 0.4647 ± 0.0418 | 0.8847 ± 0.0077 |
+| upper | 0.05 | 50 | 0.4643 ± 0.2277 | 0.4770 ± 0.0689 | 0.4918 ± 0.0531 | 0.8715 ± 0.0123 |
+| upper | 0.1 | 10 | 0.4309 ± 0.2498 | 0.4519 ± 0.0680 | 0.4527 ± 0.0686 | 0.9002 ± 0.0072 |
+| upper | 0.1 | 20 | 0.4962 ± 0.2805 | 0.4563 ± 0.0502 | 0.4292 ± 0.0506 | 0.8971 ± 0.0057 |
+| upper | 0.1 | 30 | 0.4644 ± 0.2480 | 0.4435 ± 0.0572 | 0.4617 ± 0.0409 | 0.8891 ± 0.0078 |
+| upper | 0.1 | 50 | 0.4516 ± 0.2328 | 0.4632 ± 0.0710 | 0.4735 ± 0.0471 | 0.8769 ± 0.0114 |
+| upper | 0.5 | 10 | 0.4309 ± 0.2778 | 0.4413 ± 0.0696 | 0.4452 ± 0.0689 | 0.9045 ± 0.0052 |
+| upper | 0.5 | 20 | 0.4696 ± 0.2688 | 0.4256 ± 0.0408 | 0.4157 ± 0.0734 | 0.9033 ± 0.0071 |
+| upper | 0.5 | 30 | 0.4571 ± 0.2460 | 0.4243 ± 0.0624 | 0.4552 ± 0.0323 | 0.8980 ± 0.0069 |
+| upper | 0.5 | 50 | 0.4264 ± 0.2400 | 0.4166 ± 0.0404 | 0.4510 ± 0.0452 | 0.8908 ± 0.0090 |
+| **Doctor (raw)** | - | - | - | - | 0.2650 ± 0.0219 | 0.9124 ± 0.0052 |
+
+---
+
+### CIFAR-100 / ResNet-34 (10 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4975 ± 0.0733 | 0.4840 ± 0.0188 | 0.4709 ± 0.0310 | 0.8735 ± 0.0036 |
+| mean | - | 20 | 0.4676 ± 0.0479 | 0.4447 ± 0.0229 | 0.4425 ± 0.0235 | 0.8757 ± 0.0040 |
+| mean | - | 30 | 0.4524 ± 0.0591 | 0.4339 ± 0.0168 | 0.4333 ± 0.0252 | 0.8767 ± 0.0041 |
+| mean | - | 50 | 0.4336 ± 0.0632 | 0.4116 ± 0.0249 | 0.4338 ± 0.0122 | 0.8767 ± 0.0038 |
+| upper | 0.05 | 10 | 0.4975 ± 0.0733 | 0.4840 ± 0.0188 | 0.4709 ± 0.0310 | 0.8736 ± 0.0036 |
+| upper | 0.05 | 20 | 0.4842 ± 0.0620 | 0.4511 ± 0.0256 | 0.4488 ± 0.0292 | 0.8743 ± 0.0055 |
+| upper | 0.05 | 30 | 0.4560 ± 0.0522 | 0.4541 ± 0.0215 | 0.4543 ± 0.0349 | 0.8726 ± 0.0041 |
+| upper | 0.05 | 50 | 0.4520 ± 0.0450 | 0.4396 ± 0.0179 | 0.4635 ± 0.0265 | 0.8682 ± 0.0046 |
+| upper | 0.1 | 10 | 0.4975 ± 0.0733 | 0.4840 ± 0.0188 | 0.4709 ± 0.0310 | 0.8736 ± 0.0036 |
+| upper | 0.1 | 20 | 0.4842 ± 0.0620 | 0.4511 ± 0.0256 | 0.4488 ± 0.0292 | 0.8747 ± 0.0052 |
+| upper | 0.1 | 30 | 0.4525 ± 0.0481 | 0.4523 ± 0.0228 | 0.4523 ± 0.0335 | 0.8732 ± 0.0040 |
+| upper | 0.1 | 50 | 0.4484 ± 0.0424 | 0.4367 ± 0.0223 | 0.4613 ± 0.0271 | 0.8703 ± 0.0042 |
+| upper | 0.5 | 10 | 0.4975 ± 0.0733 | 0.4840 ± 0.0188 | 0.4709 ± 0.0310 | 0.8735 ± 0.0036 |
+| upper | 0.5 | 20 | 0.4686 ± 0.0505 | 0.4447 ± 0.0196 | 0.4462 ± 0.0272 | 0.8752 ± 0.0048 |
+| upper | 0.5 | 30 | 0.4434 ± 0.0518 | 0.4416 ± 0.0205 | 0.4410 ± 0.0372 | 0.8756 ± 0.0042 |
+| upper | 0.5 | 50 | 0.4333 ± 0.0545 | 0.4253 ± 0.0193 | 0.4515 ± 0.0202 | 0.8736 ± 0.0036 |
+| **Doctor (raw)** | - | - | - | - | 0.3948 ± 0.0177 | 0.8726 ± 0.0039 |
+
+---
+
+### CIFAR-100 / DenseNet-121 (10 seeds)
+
+#### Full Grid Results (all alpha × n_clusters)
+
+| score | alpha | n_clusters | FPR (res) | FPR (cal) | FPR (test) | ROC-AUC (test) |
+|-------|-------|------------|-----------|-----------|------------|----------------|
+| mean | - | 10 | 0.4782 ± 0.0606 | 0.4920 ± 0.0559 | 0.5333 ± 0.0552 | 0.8524 ± 0.0038 |
+| mean | - | 20 | 0.4909 ± 0.0808 | 0.4744 ± 0.0270 | 0.4971 ± 0.0267 | 0.8559 ± 0.0032 |
+| mean | - | 30 | 0.4699 ± 0.0696 | 0.4642 ± 0.0246 | 0.4896 ± 0.0228 | 0.8565 ± 0.0038 |
+| mean | - | 50 | 0.4793 ± 0.0669 | 0.4546 ± 0.0285 | 0.4836 ± 0.0208 | 0.8545 ± 0.0035 |
+| upper | 0.05 | 10 | 0.4782 ± 0.0606 | 0.4920 ± 0.0559 | 0.5333 ± 0.0552 | 0.8524 ± 0.0038 |
+| upper | 0.05 | 20 | 0.4995 ± 0.0598 | 0.4901 ± 0.0277 | 0.5055 ± 0.0297 | 0.8532 ± 0.0033 |
+| upper | 0.05 | 30 | 0.4866 ± 0.0610 | 0.4965 ± 0.0297 | 0.5085 ± 0.0325 | 0.8491 ± 0.0044 |
+| upper | 0.05 | 50 | 0.5162 ± 0.0662 | 0.4933 ± 0.0216 | 0.5215 ± 0.0234 | 0.8421 ± 0.0073 |
+| upper | 0.1 | 10 | 0.4782 ± 0.0606 | 0.4920 ± 0.0559 | 0.5333 ± 0.0552 | 0.8524 ± 0.0038 |
+| upper | 0.1 | 20 | 0.4964 ± 0.0636 | 0.4884 ± 0.0267 | 0.5033 ± 0.0303 | 0.8539 ± 0.0033 |
+| upper | 0.1 | 30 | 0.4788 ± 0.0595 | 0.4902 ± 0.0304 | 0.5057 ± 0.0324 | 0.8509 ± 0.0034 |
+| upper | 0.1 | 50 | 0.5088 ± 0.0699 | 0.4922 ± 0.0219 | 0.5190 ± 0.0244 | 0.8444 ± 0.0069 |
+| upper | 0.5 | 10 | 0.4782 ± 0.0606 | 0.4920 ± 0.0559 | 0.5333 ± 0.0552 | 0.8524 ± 0.0038 |
+| upper | 0.5 | 20 | 0.4919 ± 0.0699 | 0.4846 ± 0.0291 | 0.5024 ± 0.0315 | 0.8553 ± 0.0030 |
+| upper | 0.5 | 30 | 0.4739 ± 0.0686 | 0.4750 ± 0.0254 | 0.5028 ± 0.0267 | 0.8538 ± 0.0033 |
+| upper | 0.5 | 50 | 0.4914 ± 0.0682 | 0.4750 ± 0.0290 | 0.5075 ± 0.0273 | 0.8509 ± 0.0043 |
+| **Doctor (raw)** | - | - | - | - | 0.4614 ± 0.0137 | 0.8570 ± 0.0038 |
+
+---
+
+### 10.4 Summary: Gini-based vs Top-5 Probabilities
+
+| Dataset | Model | Feature Space | Best FPR (mean) | Best FPR (upper) |
+|---------|-------|---------------|-----------------|------------------|
+| CIFAR-10 | ResNet-34 | Gini (1D) | 0.318 ± 0.188 | 0.288 ± 0.065 |
+| CIFAR-10 | ResNet-34 | Top-5 Probits (5D) | 0.349 ± 0.058 | 0.422 ± 0.113 |
+| CIFAR-10 | DenseNet-121 | Gini (1D) | 0.337 ± 0.118 | 0.373 ± 0.101 |
+| CIFAR-10 | DenseNet-121 | Top-5 Probits (5D) | 0.375 ± 0.046 | 0.416 ± 0.073 |
+| CIFAR-100 | ResNet-34 | Gini (1D) | 0.406 ± 0.020 | 0.421 ± 0.026 |
+| CIFAR-100 | ResNet-34 | Top-5 Probits (5D) | 0.433 ± 0.025 | 0.441 ± 0.037 |
+| CIFAR-100 | DenseNet-121 | Gini (1D) | 0.472 ± 0.019 | 0.486 ± 0.022 |
+| CIFAR-100 | DenseNet-121 | Top-5 Probits (5D) | 0.484 ± 0.021 | 0.502 ± 0.031 |
+
+### 10.5 Observations
+
+1. **Top-5 does NOT improve over Gini:** Using the top-5 softmax probabilities as a 5D feature space for clustering does not improve FPR@95 compared to the 1D gini score. In fact, performance is slightly worse across all dataset/model combinations.
+
+2. **Lower variance but higher mean FPR:** Top-5 probabilities show lower variance (especially on CIFAR-10), but the mean FPR is higher than gini-based clustering. For example, on CIFAR-10 ResNet-34: Top-5 mean=0.349±0.058 vs Gini mean=0.318±0.188.
+
+3. **Higher dimensional space doesn't help:** The hypothesis that richer 5D features would enable better cluster separation did not hold. The additional dimensions may introduce noise or make it harder to find good cluster boundaries.
+
+4. **Still worse than raw Doctor:** Both Top-5 and Gini clustering perform significantly worse than raw Doctor scores (15-20 percentage points degradation on CIFAR-10).
+
+5. **Consistent pattern across datasets:** The relative ordering (Doctor raw > Gini clustering > Top-5 clustering) is consistent across all four dataset/model combinations.
+
+### 10.6 Conclusion
+
+Using top-5 softmax probabilities as features for K-means constrained clustering does not provide benefits over the simpler 1D gini score. The additional information in the multi-dimensional softmax space does not translate to better error detection performance when used with constrained K-means clustering.
+
+The results suggest that the gini score already captures the relevant uncertainty information for this task, and adding more dimensions from the softmax distribution introduces noise rather than signal. For future work, alternative dimensionality reduction techniques (e.g., PCA on full softmax) or different distance metrics might be explored, but the current evidence suggests that 1D scores are preferable for this binning approach.

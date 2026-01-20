@@ -9,14 +9,14 @@
 #
 # Results will be saved to:
 #   Step 1: results/baselines/<dataset>/<model>/margin/runs/<run_tag>/grid_results.csv
-#   Step 2: results/partition_binning/<dataset>/<model>/unif-mass/runs/<run_tag>/grid_results.csv
+#   Step 2: results/partition_binning/<dataset>/<model>/partition/runs/<run_tag>/grid_results.csv
 #
 # Each grid_results.csv contains metrics for all grid configs on res, cal, and test splits.
 
 set -e
 
 RUN_TAG_BASELINE="margin-grid-20260120"
-RUN_TAG_BINNING="margin-unif-mass-grid-20260120"
+RUN_TAG_BINNING="margin-partition-grid-20260120"
 DATASET_CIFAR10="configs/datasets/cifar10/cifar10_n_res-1000_n-cal-4000_all-seeds.yml"
 DATASET_CIFAR100="configs/datasets/cifar100/cifar100_n_res-1000_n-cal-4000_all-seeds.yml"
 
@@ -114,7 +114,7 @@ run_step1() {
 run_step2() {
     echo "=== Step 2: Running Uniform Mass Binning Grid Evaluation ==="
     echo "Evaluates all 30 grid configs (5 n_clusters × 3 alphas × 2 scores) on res, cal, and test splits"
-    echo "Results: results/partition_binning/<dataset>/<model>/unif-mass/runs/${RUN_TAG_BINNING}/"
+    echo "Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
     echo "Starting 4 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
@@ -122,7 +122,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_resnet34.yml \
-        --config-detection configs/postprocessors/partition/cifar10_resnet34_margin-unif-mass.yml \
+        --config-detection configs/postprocessors/partition/cifar10_resnet34_margin-partition.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -140,7 +140,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_densenet121.yml \
-        --config-detection configs/postprocessors/partition/cifar10_densenet121_margin-unif-mass.yml \
+        --config-detection configs/postprocessors/partition/cifar10_densenet121_margin-partition.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -158,7 +158,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_resnet34.yml \
-        --config-detection configs/postprocessors/partition/cifar100_resnet34_margin-unif-mass.yml \
+        --config-detection configs/postprocessors/partition/cifar100_resnet34_margin-partition.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -176,7 +176,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_densenet121.yml \
-        --config-detection configs/postprocessors/partition/cifar100_densenet121_margin-unif-mass.yml \
+        --config-detection configs/postprocessors/partition/cifar100_densenet121_margin-partition.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -234,7 +234,7 @@ case "${1:-}" in
         echo "  step2  - Run Uniform Mass Binning grid evaluation"
         echo "           Grid: 5 n_clusters × 3 alphas × 2 scores = 30 combinations"
         echo "           Saves metrics on res, cal, and test in grid_results.csv"
-        echo "           Results: results/partition_binning/<dataset>/<model>/unif-mass/runs/${RUN_TAG_BINNING}/"
+        echo "           Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
         echo ""
         echo "  status - Check running processes and log activity"
         echo ""
