@@ -9,7 +9,7 @@
 #
 # Results will be saved to:
 #   Step 1: results/baselines/<dataset>/<model>/margin/runs/<run_tag>/grid_results.csv
-#   Step 2: results/partition_binning/<dataset>/<model>/partition/runs/<run_tag>/grid_results.csv
+#   Step 2: results/partition_binning/<dataset>/<model>/unif-mass/runs/<run_tag>/grid_results.csv
 #
 # Each grid_results.csv contains metrics for all grid configs on res, cal, and test splits.
 
@@ -114,7 +114,7 @@ run_step1() {
 run_step2() {
     echo "=== Step 2: Running Uniform Mass Binning Grid Evaluation ==="
     echo "Evaluates all 30 grid configs (5 n_clusters × 3 alphas × 2 scores) on res, cal, and test splits"
-    echo "Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
+    echo "Results: results/partition_binning/<dataset>/<model>/unif-mass/runs/${RUN_TAG_BINNING}/"
     echo "Starting 4 experiments in parallel..."
 
     # CIFAR-10 ResNet-34
@@ -234,7 +234,7 @@ case "${1:-}" in
         echo "  step2  - Run Uniform Mass Binning grid evaluation"
         echo "           Grid: 5 n_clusters × 3 alphas × 2 scores = 30 combinations"
         echo "           Saves metrics on res, cal, and test in grid_results.csv"
-        echo "           Results: results/partition_binning/<dataset>/<model>/partition/runs/${RUN_TAG_BINNING}/"
+        echo "           Results: results/partition_binning/<dataset>/<model>/unif-mass/runs/${RUN_TAG_BINNING}/"
         echo ""
         echo "  status - Check running processes and log activity"
         echo ""

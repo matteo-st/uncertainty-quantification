@@ -1,4 +1,4 @@
-name: partition
+name: unif-mass
 postprocessor_args:
   method: unif-mass
   n_clusters: 30

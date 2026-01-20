@@ -20,6 +20,7 @@ postprocessors = {
     "doctor": DoctorPostprocessor,
     "margin": MarginPostprocessor,
     "partition": PartitionPostprocessor,
+    "unif-mass": PartitionPostprocessor,  # Alias for partition with method=unif-mass
     "random_forest": RandomForestPostprocessor,
     "scikit": GenericScikitPostprocessor,
     "mlp": MLPPostprocessor,
