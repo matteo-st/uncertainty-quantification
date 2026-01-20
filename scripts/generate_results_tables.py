@@ -4,7 +4,7 @@ Generate LaTeX results tables for Margin and MSP experiments.
 
 This script compares raw scores (Margin, MSP) vs Uniform Mass binning (UM).
 - Baseline: best hyperparameters selected on res split (minimize FPR@95)
-- Partition: Rice Rule for K selection, score=mean, alpha=0.01
+- Partition: Rice Rule for K selection, score=upper, alpha=0.05
 
 Rice Rule: K = ceil(2 * n^(1/3))
 - CIFAR (n=4000): K = ceil(2 * 15.87) = 32 -> closest grid value is 30
@@ -107,8 +107,8 @@ def get_partition_results(
     results_dir: Path,
     run_tag: str,
     n_seeds: int = 9,
-    alpha: float = 0.01,
-    score: str = 'mean',
+    alpha: float = 0.05,
+    score: str = 'upper',
 ) -> list[dict]:
     """
     Get partition (Uniform Mass) results with Rice Rule K selection.
