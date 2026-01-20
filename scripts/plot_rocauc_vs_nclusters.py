@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
 from typing import Optional
+from datetime import datetime
 
 
 # Default run tags
@@ -406,9 +407,12 @@ def main():
     )
     print(f"  Baseline ROC-AUC: {baseline_results['roc_auc_mean']:.4f} ± {baseline_results['roc_auc_std']:.4f}")
 
-    # Generate output path: docs/figures/<score_name>/<dataset>_<model>_rocauc_vs_nclusters.pdf
+    # Generate output path: docs/figures/<score_name>/<partition_run_tag>/<dataset>_<model>_rocauc_vs_nclusters.pdf
+    output_dir = args.output_dir / args.score_name / partition_run_tag
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     output_filename = f"{args.dataset}_{args.model}_rocauc_vs_nclusters.pdf"
-    output_path = args.output_dir / args.score_name / output_filename
+    output_path = output_dir / output_filename
 
     # Create plot
     plot_rocauc_vs_nclusters(
@@ -422,6 +426,22 @@ def main():
         show_mean=not args.no_mean,
         figsize=tuple(args.figsize),
     )
+
+    # Save params.yml (only once per tag folder, append if exists)
+    params_path = output_dir / 'params.yml'
+    if not params_path.exists():
+        params_lines = [
+            f"# Parameters used to generate plots in this folder",
+            f"# Generated: {datetime.now().isoformat()}",
+            "",
+            f"score_name: {args.score_name}",
+            f"baseline_run_tag: {baseline_run_tag}",
+            f"partition_run_tag: {partition_run_tag}",
+            f"n_seeds: {args.n_seeds}",
+            f"results_dir: {args.results_dir}",
+        ]
+        params_path.write_text('\n'.join(params_lines))
+        print(f"Saved: {params_path}")
 
 
 if __name__ == '__main__':
