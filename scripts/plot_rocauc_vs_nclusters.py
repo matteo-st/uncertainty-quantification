@@ -406,9 +406,9 @@ def main():
     )
     print(f"  Baseline ROC-AUC: {baseline_results['roc_auc_mean']:.4f} ± {baseline_results['roc_auc_std']:.4f}")
 
-    # Generate output path
-    output_filename = f"{args.score_name}_{args.dataset}_{args.model}_rocauc_vs_nclusters.pdf"
-    output_path = args.output_dir / output_filename
+    # Generate output path: docs/figures/<score_name>/<dataset>_<model>_rocauc_vs_nclusters.pdf
+    output_filename = f"{args.dataset}_{args.model}_rocauc_vs_nclusters.pdf"
+    output_path = args.output_dir / args.score_name / output_filename
 
     # Create plot
     plot_rocauc_vs_nclusters(
