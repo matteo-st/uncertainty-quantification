@@ -5,11 +5,11 @@ postprocessor_args:
   alpha: 0.05
   bound: hoeffding
   score: upper  # Use upper CI bound as the score
-  space: msp
+  space: margin
   temperature: 1.0
   normalize: false
   magnitude: 0.0
-  n_classes: 10
+  n_classes: 1000
   reorder_embs: True
   pred_weights: 0
   init_scheme: None
@@ -27,10 +27,10 @@ experience_args:
     res: test
     cal: test
   raw_score_selection:
-    postprocessor: odin
+    postprocessor: margin
     metric: fpr
     split: res
-    run_tag: msp-grid-20260120
+    run_tag: margin-grid-20260120
 
 postprocessor_grid:
   n_clusters: [10, 20, 30, 50, 100]

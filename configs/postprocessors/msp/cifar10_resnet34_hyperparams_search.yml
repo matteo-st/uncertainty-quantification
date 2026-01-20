@@ -5,10 +5,10 @@ postprocessor_args:
 experience_args:
   n_folds: None
   n_epochs:
-    res: None
+    res: 1
     cal: 1
   transform:
-    res: None
+    res: test
     cal: test
 postprocessor_grid:
     temperature: [0.7, 0.8, 0.9, 1.0, 1.1, 1.2]

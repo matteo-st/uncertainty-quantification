@@ -26,6 +26,11 @@ experience_args:
   transform:
     res: test
     cal: test
+  raw_score_selection:
+    postprocessor: margin
+    metric: fpr
+    split: res
+    run_tag: margin-grid-20260120
 
 postprocessor_grid:
   n_clusters: [10, 20, 30, 50, 100]
