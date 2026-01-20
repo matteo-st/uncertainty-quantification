@@ -16,7 +16,7 @@
 set -e
 
 RUN_TAG_BASELINE="margin-grid-20260120"
-RUN_TAG_BINNING="margin-partition-grid-20260120"
+RUN_TAG_BINNING="margin-unif-mass-grid-20260120"
 DATASET_CIFAR10="configs/datasets/cifar10/cifar10_n_res-1000_n-cal-4000_all-seeds.yml"
 DATASET_CIFAR100="configs/datasets/cifar100/cifar100_n_res-1000_n-cal-4000_all-seeds.yml"
 
@@ -122,7 +122,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_resnet34.yml \
-        --config-detection configs/postprocessors/partition/cifar10_resnet34_margin-partition.yml \
+        --config-detection configs/postprocessors/partition/cifar10_resnet34_margin-unif-mass.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -140,7 +140,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR10" \
         --config-model configs/models/cifar10_densenet121.yml \
-        --config-detection configs/postprocessors/partition/cifar10_densenet121_margin-partition.yml \
+        --config-detection configs/postprocessors/partition/cifar10_densenet121_margin-unif-mass.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -158,7 +158,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_resnet34.yml \
-        --config-detection configs/postprocessors/partition/cifar100_resnet34_margin-partition.yml \
+        --config-detection configs/postprocessors/partition/cifar100_resnet34_margin-unif-mass.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
@@ -176,7 +176,7 @@ run_step2() {
     nohup python -m error_estimation.experiments.run_detection \
         --config-dataset "$DATASET_CIFAR100" \
         --config-model configs/models/cifar100_densenet121.yml \
-        --config-detection configs/postprocessors/partition/cifar100_densenet121_margin-partition.yml \
+        --config-detection configs/postprocessors/partition/cifar100_densenet121_margin-unif-mass.yml \
         --eval-grid \
         --run-tag "$RUN_TAG_BINNING" \
         --results-family partition_binning \
