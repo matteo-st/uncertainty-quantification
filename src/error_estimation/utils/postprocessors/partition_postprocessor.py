@@ -87,6 +87,7 @@ class PartitionPostprocessor(BasePostprocessor):
             self.score_transform = None
         self.score_transform_gamma = cfg.get("score_transform_gamma", None)
         self.score_transform_eps = cfg.get("score_transform_eps", None)
+        self.simultaneous = cfg.get("simultaneous", False)  # Bonferroni correction: alpha' = alpha/K
         self._score_transform_ref = None
         if self.score_transform not in [None, "cdf", "rank", "cdf_logit", "cdf_power"]:
             raise ValueError(f"Unsupported score_transform: {self.score_transform}")
@@ -671,15 +672,18 @@ class PartitionPostprocessor(BasePostprocessor):
 
     
 
+        # Apply Bonferroni correction if simultaneous=True: alpha' = alpha / K
+        alpha_effective = self.alpha / self.n_clusters if self.simultaneous else self.alpha
+
         if self.bound.lower() == "hoeffding":
             # half = sqrt( log(2/alpha) / (2 n) )
-            log_term = torch.log(torch.tensor(2.0 / self.alpha, device=device, dtype=dtype))
+            log_term = torch.log(torch.tensor(2.0 / alpha_effective, device=device, dtype=dtype))
             half = torch.sqrt(log_term / (2.0 * denom))
         elif self.bound.lower() == "bernstein":
             # Empirical Bernstein (Audibert et al., 2009) for X in [0,1]:
             # |μ - μ̂| ≤ sqrt( 2 V_n log(3/α) / n ) + 3 log(3/α) / n
             # using empirical (population) variance vars_ above
-            log_term = torch.log(torch.tensor(3.0 / self.alpha, device=device, dtype=dtype))
+            log_term = torch.log(torch.tensor(3.0 / alpha_effective, device=device, dtype=dtype))
             half = torch.sqrt((2.0 * vars_ * log_term) / denom) + (3.0 * log_term) / denom
         else:
             raise ValueError("bound must be 'hoeffding' or 'bernstein'")

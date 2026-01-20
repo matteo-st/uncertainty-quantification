@@ -4,6 +4,7 @@ postprocessor_args:
   n_clusters: 30
   alpha: 0.05
   bound: hoeffding
+  simultaneous: false  # Bonferroni correction: alpha' = alpha/K
   score: upper  # Use upper CI bound as the score
   space: msp
   temperature: 1.0
