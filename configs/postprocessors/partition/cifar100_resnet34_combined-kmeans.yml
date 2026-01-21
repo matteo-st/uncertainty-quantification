@@ -1,0 +1,55 @@
+# Combined Scores Binning with K-Means Constrained
+# See cifar10_resnet34_combined-kmeans.yml for detailed documentation
+
+name: partition
+postprocessor_args:
+  method: kmeans-constrained
+  n_clusters: 30
+  alpha: 0.05
+  bound: hoeffding
+  simultaneous: false
+  score: upper
+  space: combined
+  base_scores: [gini, margin, msp]
+  normalize_combined: true
+  temperature: 1.0
+  normalize: true
+  magnitude: 0.0
+  n_classes: 100
+  reorder_embs: false
+  pred_weights: 0
+  init_scheme: null
+  n_init: 10
+  max_iter: 300
+  clustering_seed: 42
+
+experience_args:
+  n_folds: null
+  fit_after_cv: false
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+  score_selections:
+    gini:
+      postprocessor: doctor
+      metric: fpr
+      split: res
+      run_tag: doctor-grid-20260120
+    margin:
+      postprocessor: margin
+      metric: fpr
+      split: res
+      run_tag: margin-grid-20260120
+    msp:
+      postprocessor: odin
+      metric: fpr
+      split: res
+      run_tag: msp-grid-20260120
+
+postprocessor_grid:
+  n_clusters: [10, 20, 30, 50, 100]
+  alpha: [0.01, 0.05, 0.1]
+  score: [upper, mean]

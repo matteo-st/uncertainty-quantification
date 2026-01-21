@@ -65,6 +65,12 @@ class PartitionPostprocessor(BasePostprocessor):
         self.pred_weight = cfg["pred_weights"]
         self.reducer = None  # No reducer for now
 
+        ## Combined scores configuration (for space="combined")
+        self.base_scores = cfg.get("base_scores", ["gini", "margin", "msp"])
+        self.score_configs = cfg.get("score_configs", {})
+        self.normalize_combined = cfg.get("normalize_combined", True)  # Normalize each score to [0,1]
+        self._combined_score_stats = {}  # Store min/max for normalization during inference
+
         ## Quantize Parameters
         self.n_clusters = cfg["n_clusters"]
         self.n_min = cfg.get("n_min", 1)
@@ -174,21 +180,128 @@ class PartitionPostprocessor(BasePostprocessor):
             raise ValueError(f"Unsupported method: {self.method}")
         pass
 
-    def _extract_embeddings(self, x=None, logits=None):
+    def _get_score_config(self, score_name: str) -> dict:
+        """Get configuration for a specific score, falling back to defaults."""
+        if score_name in self.score_configs:
+            cfg = self.score_configs[score_name]
+            return {
+                "temperature": float(cfg.get("temperature", self.temperature)),
+                "normalize": cfg.get("normalize", self.normalize_gini),
+                "magnitude": float(cfg.get("magnitude", 0.0)),
+            }
+        return {
+            "temperature": self.temperature,
+            "normalize": self.normalize_gini,
+            "magnitude": 0.0,
+        }
+
+    def _compute_single_score(self, logits: torch.Tensor, score_name: str) -> torch.Tensor:
+        """
+        Compute a single uncertainty score from logits.
+
+        Args:
+            logits: Model logits (N, C)
+            score_name: One of 'gini', 'msp', 'margin', 'entropy', 'doctor'
+
+        Returns:
+            Score tensor (N,) - higher = more uncertain
+        """
+        cfg = self._get_score_config(score_name)
+        temperature = cfg["temperature"]
+        normalize = cfg["normalize"]
+
+        if score_name in ["gini", "doctor"]:
+            # Doctor/Gini score
+            score = gini(logits, temperature=temperature, normalize=normalize).squeeze(-1)
+        elif score_name == "msp":
+            # Negative max softmax probability
+            probs = torch.softmax(logits / temperature, dim=1)
+            score = -probs.max(dim=1)[0]
+        elif score_name == "margin":
+            # 1 - margin between top 2 probs
+            probs = torch.softmax(logits / temperature, dim=1)
+            top2 = probs.topk(2, dim=1)[0]
+            score = 1.0 - (top2[:, 0] - top2[:, 1])
+        elif score_name == "entropy":
+            # Entropy of softmax
+            probs = torch.softmax(logits / temperature, dim=1)
+            score = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
+        elif score_name == "max_logit":
+            # Negative max logit
+            score = -logits.max(dim=1)[0]
+        else:
+            raise ValueError(f"Unknown score type: {score_name}")
+
+        return score
+
+    def _compute_combined_scores(self, logits: torch.Tensor, fit: bool = False) -> torch.Tensor:
+        """
+        Compute multiple scores and concatenate them.
+
+        Args:
+            logits: Model logits (N, C)
+            fit: If True, compute and store normalization stats
+
+        Returns:
+            Combined scores tensor (N, n_scores)
+        """
+        scores_list = []
+
+        for score_name in self.base_scores:
+            score = self._compute_single_score(logits, score_name)  # (N,)
+
+            if self.normalize_combined:
+                if fit:
+                    # Store stats for inference
+                    self._combined_score_stats[score_name] = {
+                        "min": score.min().item(),
+                        "max": score.max().item(),
+                    }
+
+                # Normalize to [0, 1]
+                if score_name in self._combined_score_stats:
+                    stats = self._combined_score_stats[score_name]
+                    min_val = stats["min"]
+                    max_val = stats["max"]
+                else:
+                    min_val = score.min().item()
+                    max_val = score.max().item()
+
+                if max_val - min_val > 1e-8:
+                    score = (score - min_val) / (max_val - min_val)
+                else:
+                    score = torch.zeros_like(score)
+
+            scores_list.append(score)
+
+        # Stack into (N, n_scores)
+        return torch.stack(scores_list, dim=1)
+
+    def _extract_embeddings(self, x=None, logits=None, fit: bool = False):
         """
         Extract embeddings from the model.
         This function is used to create a feature extractor.
+
+        Args:
+            x: Input images (optional, if logits not provided)
+            logits: Pre-computed logits (optional)
+            fit: If True, store normalization stats (for combined space)
         """
 
         # Should implement the reducer here!
         # if self.reducer is not None:
         #     all_embs = torch.tensor(self.reducer.fit_transform(all_embs.cpu().numpy()), device=self.device)
 
-       
+
         if logits is not None:
             logits = logits.to(self.device)
             if self.class_subset is not None:
                 logits = logits[:, self.class_subset]
+
+            # Handle combined space (multi-score concatenation)
+            if self.quantiz_space == "combined":
+                return self._compute_combined_scores(logits, fit=fit)
+
             if self.quantiz_space == "gini":
                 embs = gini(logits, temperature=self.temperature, normalize=self.normalize_gini)
                 return embs
@@ -217,6 +330,11 @@ class PartitionPostprocessor(BasePostprocessor):
             if self.class_subset is not None:
                 logits = logits[:, self.class_subset]
             self.model.to(torch.device('cpu'))
+
+            # Handle combined space (multi-score concatenation)
+            if self.quantiz_space == "combined":
+                return self._compute_combined_scores(logits, fit=fit)
+
             if self.quantiz_space == "gini":
                 embs = gini(logits, temperature=self.temperature, normalize=self.normalize_gini)
             elif self.quantiz_space == "probits":
@@ -567,7 +685,7 @@ class PartitionPostprocessor(BasePostprocessor):
 
     def fit(self, logits, detector_labels, dataloader=None, fit_clustering=True):
 
-        all_embs = self._extract_embeddings(logits=logits)
+        all_embs = self._extract_embeddings(logits=logits, fit=True)
         if self.method == "raw-score":
             return
     
@@ -586,6 +704,9 @@ class PartitionPostprocessor(BasePostprocessor):
         }
         if hasattr(self, "bin_edges") and self.bin_edges is not None:
             payload["bin_edges"] = self.bin_edges.detach().cpu()
+        # Save combined score normalization stats for inference
+        if self.quantiz_space == "combined" and self._combined_score_stats:
+            payload["combined_score_stats"] = self._combined_score_stats
         torch.save(
             payload,
             os.path.join(self.result_folder, f"partition_cluster_stats_n-clusters-{self.n_clusters}.pt"),

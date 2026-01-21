@@ -990,9 +990,12 @@ def run(args: argparse.Namespace) -> None:
                 root_dir=args.root_dir,
             )
 
-            # For lda_binning and raw_lda, load per-score hyperparameters from previous runs
+            # For lda_binning, raw_lda, and partition with combined space,
+            # load per-score hyperparameters from previous runs
             lda_score_meta = None
-            if cfg_detection_run.get("name") in ("lda_binning", "raw_lda"):
+            postprocessor_name = cfg_detection_run.get("name")
+            space = cfg_detection_run.get("postprocessor_args", {}).get("space")
+            if postprocessor_name in ("lda_binning", "raw_lda") or (postprocessor_name == "partition" and space == "combined"):
                 lda_score_meta = _apply_lda_score_selections(
                     cfg_detection=cfg_detection_run,
                     data_cfg=data_cfg,

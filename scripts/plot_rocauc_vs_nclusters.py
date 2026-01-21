@@ -23,6 +23,8 @@ import argparse
 from typing import Optional
 from datetime import datetime
 
+from error_estimation.utils.results_helper import setup_publication_style
+
 
 # Default run tags
 DEFAULT_RUN_TAGS = {
@@ -77,6 +79,16 @@ ALPHA_COLORS = {
 # Style for mean score
 MEAN_COLOR = '#9467bd'  # purple
 BASELINE_COLOR = '#d62728'  # red
+STONES_RULE_COLOR = '#7f7f7f'  # gray
+
+# Stone's rule K values: K = ceil(2 * n^(1/3)) where n = calibration set size
+# CIFAR-10/100: n = 4000, K = ceil(2 * 4000^(1/3)) = ceil(2 * 15.87) = 32 ~ 30
+# ImageNet: n = 50000, K = ceil(2 * 50000^(1/3)) = ceil(2 * 36.84) = 74 ~ 50
+STONES_RULE_K = {
+    'cifar10': 30,
+    'cifar100': 30,
+    'imagenet': 50,
+}
 
 
 def load_partition_results(
@@ -172,6 +184,7 @@ def plot_rocauc_vs_nclusters(
     output_path: Path,
     alphas: Optional[list] = None,
     show_mean: bool = True,
+    show_stones_rule: bool = True,
     figsize: tuple = (8, 6),
 ):
     """
@@ -186,6 +199,7 @@ def plot_rocauc_vs_nclusters(
         output_path: Path to save the figure
         alphas: List of alpha values to plot (default: all available)
         show_mean: Whether to show the mean score curve
+        show_stones_rule: Whether to show the Stone's rule vertical line
         figsize: Figure size
     """
     fig, ax = plt.subplots(figsize=figsize)
@@ -215,7 +229,7 @@ def plot_rocauc_vs_nclusters(
             data['n_clusters'],
             data['roc_auc_mean'],
             yerr=data['roc_auc_std'],
-            label=f'UM (α={alpha})',
+            label=f'CD (α={alpha})',
             marker='o',
             color=color,
             capsize=3,
@@ -237,7 +251,7 @@ def plot_rocauc_vs_nclusters(
                 data['n_clusters'],
                 data['roc_auc_mean'],
                 yerr=data['roc_auc_std'],
-                label='UM (mean)',
+                label='CD (mean)',
                 marker='s',
                 color=MEAN_COLOR,
                 capsize=3,
@@ -265,17 +279,23 @@ def plot_rocauc_vs_nclusters(
         alpha=0.2,
     )
 
+    # Plot Stone's rule vertical line
+    if show_stones_rule and dataset in STONES_RULE_K:
+        stones_k = STONES_RULE_K[dataset]
+        ax.axvline(
+            stones_k,
+            color=STONES_RULE_COLOR,
+            linestyle='--',
+            linewidth=2,
+            label=f"Stone's rule (K={stones_k})",
+        )
+
     # Formatting
     ax.set_xlabel('Number of clusters (K)', fontsize=12)
     ax.set_ylabel('ROC-AUC (test)', fontsize=12)
 
-    dataset_display = DATASET_DISPLAY_NAMES.get(dataset, dataset)
-    model_display = MODEL_DISPLAY_NAMES.get(model, model)
-    score_display = SCORE_DISPLAY_NAMES.get(score_name, score_name)
-    ax.set_title(f'{score_display} - {dataset_display} - {model_display}', fontsize=14)
-
     ax.set_xticks(n_clusters_values)
-    ax.legend(loc='best', fontsize=10)
+    ax.legend(loc='best', fontsize=9)
     ax.grid(True, alpha=0.3)
 
     # Set y-axis limits - zoom in on the actual data range
@@ -285,9 +305,9 @@ def plot_rocauc_vs_nclusters(
     y_min_data = min(m - s for m, s in zip(all_means, all_stds))
     y_max_data = max(m + s for m, s in zip(all_means, all_stds))
 
-    # Add 20% padding on each side of the data range
+    # Add small padding on each side of the data range
     data_range = y_max_data - y_min_data
-    padding = max(data_range * 0.3, 0.005)  # At least 0.5% padding
+    padding = max(data_range * 0.03, 0.001)  # 3% padding, at least 0.1%
 
     ax.set_ylim(y_min_data - padding, y_max_data + padding)
 
@@ -296,14 +316,15 @@ def plot_rocauc_vs_nclusters(
     # Save figure
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.savefig(output_path.with_suffix('.png'), dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
-    print(f"Saved: {output_path.with_suffix('.png')}")
 
     plt.close()
 
 
 def main():
+    # Setup publication-quality matplotlib style
+    setup_publication_style()
+
     parser = argparse.ArgumentParser(
         description='Plot ROC-AUC vs number of clusters for Uniform Mass binning.'
     )
@@ -370,6 +391,11 @@ def main():
         help='Do not show the mean score curve',
     )
     parser.add_argument(
+        '--no-stones-rule',
+        action='store_true',
+        help="Do not show the Stone's rule vertical line",
+    )
+    parser.add_argument(
         '--figsize',
         type=float,
         nargs=2,
@@ -424,6 +450,7 @@ def main():
         output_path,
         alphas=args.alphas,
         show_mean=not args.no_mean,
+        show_stones_rule=not args.no_stones_rule,
         figsize=tuple(args.figsize),
     )
 
