@@ -50,6 +50,6 @@ experience_args:
       run_tag: msp-grid-20260120
 
 postprocessor_grid:
-  n_clusters: [10, 20, 30, 50, 70]
-  alpha: [0.01, 0.05, 0.1]
+  n_clusters: [10, 20, 30, 50]
+  alpha: [0.05]
   score: [upper, mean]
