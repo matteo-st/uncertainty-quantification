@@ -79,13 +79,36 @@ def load_logits(latents_dir: Path, dataset: str, model: str) -> torch.Tensor:
     return data, None
 
 
-def load_split_indices(dataset_config_path: Path, seed: int, split: str) -> list:
-    """Load split indices from dataset config."""
+def compute_split_indices(n_total: int, n_res: int, n_cal: int, n_test: int, seed: int, split: str) -> list:
+    """Compute split indices by shuffling with seed (matching dataloader.py logic)."""
+    import random
+    perm = list(range(n_total))
+    random.seed(seed)
+    random.shuffle(perm)
+
+    if n_res == 0:
+        cal_idx = perm[:n_cal]
+        test_idx = perm[n_total - n_test:]
+        splits = {"cal": cal_idx, "test": test_idx}
+    else:
+        cal_idx = perm[:n_cal]
+        res_idx = perm[n_cal:n_cal + n_res]
+        test_idx = perm[n_total - n_test:]
+        splits = {"res": res_idx, "cal": cal_idx, "test": test_idx}
+
+    if split not in splits:
+        raise ValueError(f"Split '{split}' not available. Available: {list(splits.keys())}")
+    return splits[split]
+
+
+def load_split_config(dataset_config_path: Path) -> dict:
+    """Load split configuration from dataset config."""
     cfg = Config(dataset_config_path)
-    seed_key = f"seed-split-{seed}"
-    if seed_key not in cfg:
-        raise ValueError(f"Seed {seed} not found in {dataset_config_path}")
-    return cfg[seed_key][split]
+    return {
+        "n_res": cfg.get("n_samples", {}).get("res", 1000),
+        "n_cal": cfg.get("n_samples", {}).get("cal", 4000),
+        "n_test": cfg.get("n_samples", {}).get("test", 5000),
+    }
 
 
 def plot_heatmap(
@@ -215,7 +238,17 @@ def main():
     else:
         dataset_config = Path(f'configs/datasets/{args.dataset}/{args.dataset}_n_res-1000_n-cal-4000_all-seeds.yml')
 
-    indices = load_split_indices(dataset_config, args.seed, args.split)
+    # Load split configuration and compute indices
+    split_cfg = load_split_config(dataset_config)
+    n_total = len(logits)
+    indices = compute_split_indices(
+        n_total=n_total,
+        n_res=split_cfg["n_res"],
+        n_cal=split_cfg["n_cal"],
+        n_test=split_cfg["n_test"],
+        seed=args.seed,
+        split=args.split
+    )
     print(f"Using {len(indices)} samples from {args.split} split (seed {args.seed})")
 
     # Get subset
