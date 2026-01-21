@@ -1901,3 +1901,121 @@ Key considerations:
 - The additional complexity may not justify the small performance gain for practical applications
 
 **Recommendation:** For simplicity, single-score Doctor binning remains the preferred approach. Combined scores could be considered when maximizing FPR@95 is critical and the additional variance is acceptable.
+
+---
+
+## 12. 2D Combined Scores K-Means Constrained (ImageNet)
+
+### 12.1 Motivation
+
+Following the 3D combined scores experiment (Section 11), we test whether simpler 2D combinations perform equally well, given that Margin and MSP are highly correlated (r=0.983).
+
+### 12.2 Combinations Tested
+
+- **Gini + MSP (2D):** Doctor score combined with MSP
+- **Gini + Margin (2D):** Doctor score combined with Margin
+
+### 12.3 Results
+
+#### Gini + MSP
+
+#### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4882 ± 0.0138 | 0.8713 ± 0.0024 | 0.3855 ± 0.0033 |
+| mean | 20 | 0.4486 ± 0.0076 | 0.8740 ± 0.0025 | 0.3889 ± 0.0034 |
+| mean | 30 | 0.4438 ± 0.0194 | 0.8745 ± 0.0025 | 0.3900 ± 0.0033 |
+| mean | 50 | 0.4469 ± 0.0150 | 0.8744 ± 0.0026 | 0.3899 ± 0.0033 |
+| upper | 10 | 0.4883 ± 0.0135 | 0.8713 ± 0.0024 | 0.3855 ± 0.0033 |
+| upper | 20 | 0.4544 ± 0.0154 | 0.8733 ± 0.0031 | 0.3887 ± 0.0035 |
+| upper | 30 | 0.4506 ± 0.0308 | 0.8735 ± 0.0034 | 0.3896 ± 0.0036 |
+| upper | 50 | 0.4635 ± 0.0165 | 0.8725 ± 0.0034 | 0.3893 ± 0.0036 |
+
+#### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.5034 ± 0.0560 | 0.8637 ± 0.0015 | 0.4801 ± 0.0041 |
+| mean | 20 | 0.4733 ± 0.0095 | 0.8667 ± 0.0014 | 0.4820 ± 0.0033 |
+| mean | 30 | 0.4699 ± 0.0109 | 0.8670 ± 0.0016 | 0.4823 ± 0.0033 |
+| mean | 50 | 0.4713 ± 0.0139 | 0.8668 ± 0.0017 | 0.4821 ± 0.0032 |
+| upper | 10 | 0.5034 ± 0.0560 | 0.8637 ± 0.0015 | 0.4801 ± 0.0041 |
+| upper | 20 | 0.4733 ± 0.0095 | 0.8667 ± 0.0015 | 0.4820 ± 0.0033 |
+| upper | 30 | 0.4710 ± 0.0111 | 0.8668 ± 0.0017 | 0.4823 ± 0.0033 |
+| upper | 50 | 0.4754 ± 0.0156 | 0.8662 ± 0.0017 | 0.4817 ± 0.0027 |
+
+#### Gini + Margin
+
+#### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4936 ± 0.0120 | 0.8687 ± 0.0026 | 0.3794 ± 0.0039 |
+| mean | 20 | 0.4569 ± 0.0161 | 0.8713 ± 0.0026 | 0.3846 ± 0.0063 |
+| mean | 30 | 0.4415 ± 0.0158 | 0.8719 ± 0.0024 | 0.3849 ± 0.0046 |
+| mean | 50 | 0.4442 ± 0.0080 | 0.8716 ± 0.0028 | 0.3837 ± 0.0047 |
+| upper | 10 | 0.4970 ± 0.0097 | 0.8685 ± 0.0027 | 0.3793 ± 0.0040 |
+| upper | 20 | 0.4650 ± 0.0195 | 0.8708 ± 0.0030 | 0.3845 ± 0.0064 |
+| upper | 30 | 0.4555 ± 0.0221 | 0.8708 ± 0.0030 | 0.3845 ± 0.0047 |
+| upper | 50 | 0.4647 ± 0.0163 | 0.8695 ± 0.0038 | 0.3829 ± 0.0042 |
+
+#### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4685 ± 0.0106 | 0.8613 ± 0.0012 | 0.4786 ± 0.0047 |
+| mean | 20 | 0.4764 ± 0.0103 | 0.8640 ± 0.0017 | 0.4789 ± 0.0025 |
+| mean | 30 | 0.4718 ± 0.0108 | 0.8651 ± 0.0015 | 0.4801 ± 0.0020 |
+| mean | 50 | 0.4601 ± 0.0117 | 0.8655 ± 0.0015 | 0.4805 ± 0.0014 |
+| upper | 10 | 0.4685 ± 0.0106 | 0.8613 ± 0.0012 | 0.4786 ± 0.0047 |
+| upper | 20 | 0.4764 ± 0.0103 | 0.8640 ± 0.0017 | 0.4789 ± 0.0025 |
+| upper | 30 | 0.4718 ± 0.0108 | 0.8650 ± 0.0015 | 0.4797 ± 0.0018 |
+| upper | 50 | 0.4601 ± 0.0117 | 0.8653 ± 0.0014 | 0.4796 ± 0.0019 |
+
+### 12.4 Comparison: All Methods vs Doctor UM Baseline
+
+| Model | Method | Best K | FPR@95 (test) | ROC-AUC (test) | AURC (test) | Δ FPR vs UM |
+|-------|--------|--------|---------------|----------------|-------------|-------------|
+| ViT-B/16 | Doctor UM (1D) | 30 | 0.4509 ± 0.0153 | 0.8738 ± 0.0025 | 0.3873 ± 0.0028 | - |
+| ViT-B/16 | 3D (Gini+Margin+MSP) | 30 | 0.4444 ± 0.0208 | 0.8732 ± 0.0030 | 0.3885 ± 0.0037 | -0.65% |
+| ViT-B/16 | 2D (Gini+MSP) | 30 | 0.4506 ± 0.0308 | 0.8735 ± 0.0034 | 0.3896 ± 0.0036 | -0.03% |
+| ViT-B/16 | 2D (Gini+Margin) | 30 | 0.4555 ± 0.0221 | 0.8708 ± 0.0030 | 0.3845 ± 0.0047 | +0.46% |
+| ViT-Ti/16 | Doctor UM (1D) | 30 | 0.4749 ± 0.0114 | 0.8649 ± 0.0031 | 0.4794 ± 0.0043 | - |
+| ViT-Ti/16 | 3D (Gini+Margin+MSP) | 50 | 0.4591 ± 0.0137 | 0.8668 ± 0.0014 | 0.4817 ± 0.0028 | -1.58% |
+| ViT-Ti/16 | 2D (Gini+MSP) | 30 | 0.4710 ± 0.0111 | 0.8668 ± 0.0017 | 0.4823 ± 0.0033 | -0.39% |
+| ViT-Ti/16 | 2D (Gini+Margin) | 50 | 0.4601 ± 0.0117 | 0.8653 ± 0.0014 | 0.4796 ± 0.0019 | -1.48% |
+
+### 12.5 Observations
+
+1. **2D combinations do NOT improve over single-score Doctor UM:**
+   - ViT-B/16: 2D Gini+MSP achieves 0.4506 FPR@95 vs 0.4509 for Doctor UM (essentially identical)
+   - ViT-B/16: 2D Gini+Margin is worse (0.4555 vs 0.4509)
+   - ViT-Ti/16: 2D Gini+Margin achieves 0.4601 vs 0.4749 (-1.48%), comparable to 3D
+
+2. **3D marginally better than 2D on ViT-B/16:**
+   - 3D: 0.4444 FPR@95
+   - 2D Gini+MSP: 0.4506
+   - 2D Gini+Margin: 0.4555
+   - The third score provides a small additional benefit
+
+3. **On ViT-Ti/16, 2D Gini+Margin ≈ 3D:**
+   - 3D: 0.4591 FPR@95
+   - 2D Gini+Margin: 0.4601
+   - Adding MSP doesn't help when Margin is already included
+
+4. **Higher variance with multi-dimensional methods:**
+   - Doctor UM: std ≈ 0.011-0.015
+   - 2D/3D methods: std ≈ 0.011-0.031
+   - Multi-dimensional clustering is less stable
+
+### 12.6 Conclusion
+
+**2D score combinations do not improve over single-score Doctor Uniform Mass binning.** The 3D combination (Gini+Margin+MSP) shows marginal improvement (0.5-1.6%), but this comes with increased variance and complexity.
+
+The lack of improvement from 2D combinations confirms that:
+- Gini (Doctor) already captures the essential uncertainty information
+- Adding Margin or MSP does not provide complementary information that helps with error detection
+- The high correlation between Margin/MSP (r=0.983) means they are essentially redundant
+
+**Final Recommendation:** Use single-score Doctor Uniform Mass binning. Multi-dimensional score combinations add complexity without meaningful performance gains.
