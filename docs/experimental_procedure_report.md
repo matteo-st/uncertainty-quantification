@@ -1804,3 +1804,100 @@ Key differences from gini-based K-means constrained:
 Using top-5 softmax probabilities as features for K-means constrained clustering does not provide benefits over the simpler 1D gini score. The additional information in the multi-dimensional softmax space does not translate to better error detection performance when used with constrained K-means clustering.
 
 The results suggest that the gini score already captures the relevant uncertainty information for this task, and adding more dimensions from the softmax distribution introduces noise rather than signal. For future work, alternative dimensionality reduction techniques (e.g., PCA on full softmax) or different distance metrics might be explored, but the current evidence suggests that 1D scores are preferable for this binning approach.
+
+---
+
+## 11. Combined Scores K-Means Constrained (ImageNet)
+
+### 11.1 Motivation
+
+Previous experiments showed that Doctor (Gini), Margin, and MSP scores have different correlation structures:
+- Margin ≈ MSP ≈ Entropy (r > 0.93) - highly redundant
+- Gini is most distinct (r = 0.72-0.81 with others)
+
+This experiment tests whether combining multiple uncertainty scores in a multi-dimensional space can improve error detection compared to single-score binning.
+
+### 11.2 Experimental Setup
+
+**Scores combined:** Doctor (Gini), Margin, MSP
+- Each score computed with per-seed hyperparameters selected from baseline grids
+- Scores normalized to [0,1] before concatenation
+
+**Method:** K-Means Constrained clustering in 3D score space
+- `simultaneous=True`: Bonferroni correction (α' = α/K) for valid confidence bounds
+- `alpha=0.05`, `bound=hoeffding`
+- Grid: K ∈ {10, 20, 30, 50}
+
+**Data splits:** n_res=5000, n_cal=20000, n_test=25000
+
+### 11.3 Per-Score Hyperparameters
+
+Selected from baseline grid searches on res split (per-seed):
+
+| Score | Postprocessor | Selection Metric | Run Tag |
+|-------|---------------|------------------|---------|
+| Gini | doctor | FPR@95 | doctor-grid-20260120 |
+| Margin | margin | FPR@95 | margin-grid-20260120 |
+| MSP | odin | FPR@95 | msp-grid-20260120 |
+
+### 11.4 Results
+
+### ImageNet / ViT-B/16 (9 seeds)
+
+| score | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|------------|------------|----------------|
+| mean | 10 | 0.4941 ± 0.0108 | 0.8703 ± 0.0024 |
+| mean | 20 | 0.4500 ± 0.0084 | 0.8732 ± 0.0024 |
+| mean | 30 | 0.4366 ± 0.0142 | 0.8737 ± 0.0025 |
+| mean | 50 | 0.4426 ± 0.0096 | 0.8738 ± 0.0028 |
+| upper | 10 | 0.4947 ± 0.0101 | 0.8702 ± 0.0025 |
+| upper | 20 | 0.4537 ± 0.0127 | 0.8729 ± 0.0028 |
+| upper | 30 | 0.4444 ± 0.0208 | 0.8732 ± 0.0030 |
+| upper | 50 | 0.4569 ± 0.0226 | 0.8721 ± 0.0037 |
+| **Doctor UM (K=30)** | 30 | 0.4509 ± 0.0153 | 0.8738 ± 0.0025 |
+
+### ImageNet / ViT-Ti/16 (9 seeds)
+
+| score | n_clusters | FPR (test) | ROC-AUC (test) |
+|-------|------------|------------|----------------|
+| mean | 10 | 0.4676 ± 0.0098 | 0.8635 ± 0.0016 |
+| mean | 20 | 0.4755 ± 0.0098 | 0.8662 ± 0.0017 |
+| mean | 30 | 0.4714 ± 0.0105 | 0.8668 ± 0.0015 |
+| mean | 50 | 0.4595 ± 0.0133 | 0.8671 ± 0.0015 |
+| upper | 10 | 0.4676 ± 0.0098 | 0.8635 ± 0.0016 |
+| upper | 20 | 0.4755 ± 0.0098 | 0.8662 ± 0.0017 |
+| upper | 30 | 0.4714 ± 0.0105 | 0.8667 ± 0.0015 |
+| upper | 50 | 0.4591 ± 0.0137 | 0.8668 ± 0.0014 |
+| **Doctor UM (K=30)** | 30 | 0.4749 ± 0.0114 | 0.8649 ± 0.0031 |
+
+### 11.5 Summary: Combined Scores vs Single Score
+
+| Model | Method | Best K | FPR@95 (test) | ROC-AUC (test) | Δ FPR |
+|-------|--------|--------|---------------|----------------|-------|
+| ViT-B/16 | Combined (upper) | 30 | 0.4444 ± 0.0208 | 0.8732 ± 0.0030 | -0.65% |
+| ViT-B/16 | Doctor UM | 30 | 0.4509 ± 0.0153 | 0.8738 ± 0.0025 | - |
+| ViT-Ti/16 | Combined (upper) | 50 | 0.4591 ± 0.0137 | 0.8668 ± 0.0014 | -1.58% |
+| ViT-Ti/16 | Doctor UM | 30 | 0.4749 ± 0.0114 | 0.8649 ± 0.0031 | - |
+
+### 11.6 Observations
+
+1. **Marginal improvement on ViT-B/16:** Combined scores achieve 0.4444 FPR@95 vs 0.4509 for Doctor UM alone (0.65 percentage points improvement). However, variance is higher (0.0208 vs 0.0153).
+
+2. **Better improvement on ViT-Ti/16:** Combined scores achieve 0.4591 FPR@95 vs 0.4749 for Doctor UM (1.58 percentage points improvement), with slightly higher variance.
+
+3. **ROC-AUC comparable:** Combined scores maintain similar ROC-AUC to single-score binning, suggesting the 3D clustering preserves discrimination ability.
+
+4. **Mean vs Upper similar:** Unlike single-score binning where mean often outperforms upper, here the difference is minimal - likely because Bonferroni correction with K clusters in 3D space is quite conservative.
+
+5. **Optimal K varies:** ViT-B/16 prefers K=30 while ViT-Ti/16 prefers K=50, suggesting the optimal bin count depends on the model's uncertainty distribution.
+
+### 11.7 Conclusion
+
+Combining Doctor, Margin, and MSP scores in a 3D feature space for K-means constrained binning provides **marginal improvements** (0.7-1.6 percentage points) over single-score Doctor binning on ImageNet. The improvement is modest and comes with increased variance.
+
+Key considerations:
+- The high correlation between Margin/MSP means the effective dimensionality is closer to 2D (Gini + one of Margin/MSP)
+- The Bonferroni correction for simultaneous confidence bounds may be overly conservative in multi-dimensional settings
+- The additional complexity may not justify the small performance gain for practical applications
+
+**Recommendation:** For simplicity, single-score Doctor binning remains the preferred approach. Combined scores could be considered when maximizing FPR@95 is critical and the additional variance is acceptable.
