@@ -7,7 +7,7 @@ postprocessor_args:
   n_clusters: 30
   alpha: 0.05
   bound: hoeffding
-  simultaneous: false
+  simultaneous: true
   score: upper
   space: combined
   base_scores: [gini, margin, msp]
