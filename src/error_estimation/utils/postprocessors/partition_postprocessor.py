@@ -101,7 +101,10 @@ class PartitionPostprocessor(BasePostprocessor):
         ### Bregman Divergence Parameters
         self.divergence = None
 
-        
+        ### Supervised Partition Parameters
+        self.sp_quantiles = np.array(cfg.get("quantiles", [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]))
+        self.sp_balance_penalty = cfg.get("balance_penalty", False)
+        self.sp_max_samples_factor = cfg.get("max_samples_factor", None)  # e.g., 1.3 means max = 1.3 * n/B
 
         self.__init__quantizer()
 
@@ -173,6 +176,12 @@ class PartitionPostprocessor(BasePostprocessor):
             # KMeansConstrained will be instantiated in fit_quantizer
             # since we need n_samples to set size_min/size_max
             self.clustering_algo = None
+
+        elif self.method == "supervised-partition":
+            # SupervisedPartition will be instantiated in fit_quantizer
+            # since we need error labels for supervised splitting
+            self.clustering_algo = None
+            # Parameters already set in __init__: sp_quantiles, sp_balance_penalty, sp_max_samples_factor
 
         elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score", "isotonic-binning"]:
             pass
@@ -460,6 +469,18 @@ class PartitionPostprocessor(BasePostprocessor):
             cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
             return cluster
 
+        elif self.method == "supervised-partition":
+            # Use tree traversal for prediction
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
+            if embs.dim() == 1:
+                X = embs.detach().cpu().numpy().reshape(-1, 1)
+            else:
+                X = embs.detach().cpu().numpy()
+            cluster_labels = self.clustering_algo.predict(X)
+            cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+            return cluster
+
         else:
             if self.reducer is not None:
                 embs = self.reducer.transform(embs.cpu().numpy())
@@ -640,6 +661,42 @@ class PartitionPostprocessor(BasePostprocessor):
             # Fit and predict
             cluster_labels = self.clustering_algo.fit_predict(X)
             clusters = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+
+        elif self.method == "supervised-partition":
+            # Convert to numpy for supervised partition
+            if all_embs.dim() > 1 and all_embs.size(1) == 1:
+                all_embs = all_embs.squeeze(1)
+            if all_embs.dim() == 1:
+                X = all_embs.detach().cpu().numpy().reshape(-1, 1)
+            else:
+                X = all_embs.detach().cpu().numpy()
+
+            # Get error labels
+            errors = detector_labels.detach().cpu().numpy().astype(float)
+
+            n_samples = X.shape[0]
+            min_samples = n_samples // self.n_clusters
+            max_samples = None
+            if self.sp_max_samples_factor is not None:
+                max_samples = int(self.sp_max_samples_factor * n_samples / self.n_clusters)
+
+            # Instantiate and fit SupervisedPartition
+            from error_estimation.utils.clustering import SupervisedPartition
+            self.clustering_algo = SupervisedPartition(
+                n_clusters=self.n_clusters,
+                min_samples_leaf=min_samples,
+                max_samples_leaf=max_samples,
+                quantiles=self.sp_quantiles,
+                balance_penalty=self.sp_balance_penalty,
+                random_state=self.quantiz_seed,
+            )
+
+            # Fit and predict
+            cluster_labels = self.clustering_algo.fit_predict(X, errors)
+            clusters = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+
+            # Store leaf info for analysis
+            self._sp_leaf_info = self.clustering_algo.get_leaf_info()
 
         elif self.method == "quantile-merge":
             embs = all_embs.squeeze()

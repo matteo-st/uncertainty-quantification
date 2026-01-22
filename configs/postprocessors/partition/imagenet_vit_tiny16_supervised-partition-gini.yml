@@ -1,0 +1,41 @@
+# Supervised Partition (1D: Doctor/Gini)
+# Risk-aware balanced recursive partition using error labels
+
+name: partition
+postprocessor_args:
+  method: supervised-partition
+  n_clusters: 30
+  alpha: 0.05
+  bound: hoeffding
+  simultaneous: true
+  score: upper
+  space: gini
+  temperature: 1.0
+  normalize: true
+  magnitude: 0.0
+  n_classes: 1000
+  reorder_embs: false
+  pred_weights: 0
+  init_scheme: null
+  n_init: null
+  max_iter: null
+  clustering_seed: 42
+  # Supervised partition parameters
+  quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  balance_penalty: false
+  max_samples_factor: null
+
+experience_args:
+  n_folds: null
+  fit_after_cv: false
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+
+postprocessor_grid:
+  n_clusters: [10, 20, 30, 50]
+  alpha: [0.05]
+  score: [upper, mean]
