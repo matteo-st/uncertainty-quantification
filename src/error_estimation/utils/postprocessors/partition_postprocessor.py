@@ -116,6 +116,11 @@ class PartitionPostprocessor(BasePostprocessor):
         self.optbinning_solver = cfg.get("optbinning_solver", "cp")  # cp, mip
         self.optbinning_monotonic = cfg.get("optbinning_monotonic", "ascending")
         self.optbinning_min_bin_size = cfg.get("optbinning_min_bin_size", 0.05)
+        self.optbinning_min_n_bins = cfg.get("optbinning_min_n_bins", None)  # Force minimum bins
+        # max_n_prebins must be >= max_n_bins; default to 2x n_clusters or at least 50
+        self.optbinning_max_n_prebins = cfg.get(
+            "optbinning_max_n_prebins", max(self.n_clusters * 2, 50)
+        )
         self._optbinning_multi = False  # Will be set in fit_quantizer
         self._binning_process = None  # For multi-dimensional case
 
@@ -755,8 +760,10 @@ class PartitionPostprocessor(BasePostprocessor):
                     dtype="numerical",
                     solver=self.optbinning_solver,
                     monotonic_trend=self.optbinning_monotonic,
-                    min_bin_size=self.optbinning_min_bin_size,
+                    max_n_prebins=self.optbinning_max_n_prebins,
+                    min_n_bins=self.optbinning_min_n_bins,
                     max_n_bins=self.n_clusters,
+                    min_bin_size=self.optbinning_min_bin_size,
                 )
                 self.clustering_algo.fit(X, errors)
 
@@ -775,12 +782,20 @@ class PartitionPostprocessor(BasePostprocessor):
                 var_names = [f"score_{i}" for i in range(n_scores)]
 
                 # Fit BinningProcess
+                # max_n_prebins must be >= max_n_bins for the algorithm to work
+                # binning_fit_params passes parameters to underlying OptimalBinning instances
+                binning_fit_params = {
+                    name: {"monotonic_trend": self.optbinning_monotonic}
+                    for name in var_names
+                }
                 self._binning_process = BinningProcess(
                     variable_names=var_names,
-                    max_n_prebins=20,
+                    max_n_prebins=self.optbinning_max_n_prebins,
                     max_n_bins=self.n_clusters,
+                    min_n_bins=self.optbinning_min_n_bins,
                     min_prebin_size=self.optbinning_min_bin_size,
                     min_bin_size=self.optbinning_min_bin_size,
+                    binning_fit_params=binning_fit_params,
                 )
                 self._binning_process.fit(X, errors)
 
@@ -793,8 +808,10 @@ class PartitionPostprocessor(BasePostprocessor):
                     dtype="numerical",
                     solver=self.optbinning_solver,
                     monotonic_trend=self.optbinning_monotonic,
-                    min_bin_size=self.optbinning_min_bin_size,
+                    max_n_prebins=self.optbinning_max_n_prebins,
+                    min_n_bins=self.optbinning_min_n_bins,
                     max_n_bins=self.n_clusters,
+                    min_bin_size=self.optbinning_min_bin_size,
                 )
                 self.clustering_algo.fit(combined_woe, errors)
 
