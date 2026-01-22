@@ -778,7 +778,9 @@ class PartitionPostprocessor(BasePostprocessor):
                 self._binning_process = BinningProcess(
                     variable_names=var_names,
                     max_n_prebins=20,
+                    max_n_bins=self.n_clusters,
                     min_prebin_size=self.optbinning_min_bin_size,
+                    min_bin_size=self.optbinning_min_bin_size,
                 )
                 self._binning_process.fit(X, errors)
 
