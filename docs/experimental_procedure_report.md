@@ -2019,3 +2019,145 @@ The lack of improvement from 2D combinations confirms that:
 - The high correlation between Margin/MSP (r=0.983) means they are essentially redundant
 
 **Final Recommendation:** Use single-score Doctor Uniform Mass binning. Multi-dimensional score combinations add complexity without meaningful performance gains.
+
+---
+
+## 13. Supervised Partition (ImageNet)
+
+### 13.1 Method Description
+
+**Supervised Partition** is a risk-aware balanced recursive partition that uses error labels to guide axis-aligned splits. Unlike unsupervised methods (K-means, Uniform Mass), it explicitly maximizes error rate separation between children nodes.
+
+**Key features:**
+- Binary tree with axis-aligned hyperrectangle leaves
+- Splits chosen to maximize |η_L - η_R| (error rate separation between children)
+- Minimum samples per leaf constraint (n_samples / n_clusters)
+- Candidate thresholds from quantiles (0.1, 0.2, ..., 0.9)
+- Works for any dimension (1D, 2D, 3D, etc.)
+
+**Hypothesis:** By using error labels during partitioning, supervised partition should create bins with better error separation than unsupervised uniform mass binning.
+
+### 13.2 Experiment Setup
+
+- **Dataset:** ImageNet (n_res=5000, n_cal=20000, n_test=5000)
+- **Models:** ViT-Ti/16, ViT-B/16
+- **Score spaces:**
+  - 1D: Gini (Doctor score)
+  - 2D: Gini + Margin
+- **Partition fitted on:** res split (5000 samples)
+- **Calibration on:** cal split (20000 samples)
+- **Seeds:** 1-9
+
+### 13.3 Results
+
+#### 13.3.1 Supervised Partition - 1D (Gini/Doctor)
+
+##### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.5712 ± 0.0460 | 0.8580 ± 0.0012 | 0.4764 ± 0.0032 |
+| mean | 20 | 0.4840 ± 0.0220 | 0.8648 ± 0.0013 | 0.4798 ± 0.0034 |
+| mean | 30 | 0.4732 ± 0.0220 | 0.8656 ± 0.0014 | 0.4795 ± 0.0034 |
+| mean | 50 | 0.4609 ± 0.0103 | 0.8660 ± 0.0013 | 0.4802 ± 0.0030 |
+| upper | 10 | 0.5712 ± 0.0460 | 0.8580 ± 0.0012 | 0.4764 ± 0.0032 |
+| upper | 20 | 0.4840 ± 0.0220 | 0.8647 ± 0.0013 | 0.4798 ± 0.0034 |
+| upper | 30 | 0.4795 ± 0.0325 | 0.8653 ± 0.0014 | 0.4794 ± 0.0034 |
+| upper | 50 | 0.4628 ± 0.0118 | 0.8657 ± 0.0013 | 0.4802 ± 0.0031 |
+
+##### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4493 ± 0.0213 | 0.8662 ± 0.0020 | 0.3829 ± 0.0026 |
+| mean | 20 | 0.4581 ± 0.0434 | 0.8731 ± 0.0023 | 0.3867 ± 0.0032 |
+| mean | 30 | 0.4535 ± 0.0289 | 0.8739 ± 0.0022 | 0.3862 ± 0.0033 |
+| mean | 50 | 0.4407 ± 0.0135 | 0.8743 ± 0.0023 | 0.3879 ± 0.0032 |
+| upper | 10 | 0.4493 ± 0.0213 | 0.8662 ± 0.0020 | 0.3829 ± 0.0026 |
+| upper | 20 | 0.4581 ± 0.0434 | 0.8729 ± 0.0023 | 0.3866 ± 0.0032 |
+| upper | 30 | 0.4501 ± 0.0242 | 0.8735 ± 0.0022 | 0.3861 ± 0.0033 |
+| upper | 50 | 0.4406 ± 0.0124 | 0.8734 ± 0.0024 | 0.3876 ± 0.0032 |
+
+#### 13.3.2 Supervised Partition - 2D (Gini + Margin)
+
+##### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.5586 ± 0.0627 | 0.8572 ± 0.0025 | 0.4806 ± 0.0057 |
+| mean | 20 | 0.4824 ± 0.0300 | 0.8644 ± 0.0018 | 0.4812 ± 0.0036 |
+| mean | 30 | 0.4878 ± 0.0377 | 0.8658 ± 0.0015 | 0.4808 ± 0.0037 |
+| mean | 50 | 0.4775 ± 0.0206 | 0.8662 ± 0.0015 | 0.4814 ± 0.0034 |
+| upper | 10 | 0.5586 ± 0.0627 | 0.8572 ± 0.0025 | 0.4806 ± 0.0057 |
+| upper | 20 | 0.4887 ± 0.0293 | 0.8640 ± 0.0022 | 0.4806 ± 0.0038 |
+| upper | 30 | 0.4915 ± 0.0352 | 0.8648 ± 0.0018 | 0.4793 ± 0.0042 |
+| upper | 50 | 0.4904 ± 0.0313 | 0.8642 ± 0.0021 | 0.4788 ± 0.0035 |
+
+##### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4939 ± 0.0665 | 0.8629 ± 0.0071 | 0.3908 ± 0.0057 |
+| mean | 20 | 0.4737 ± 0.0435 | 0.8693 ± 0.0048 | 0.3910 ± 0.0030 |
+| mean | 30 | 0.4742 ± 0.0386 | 0.8705 ± 0.0045 | 0.3895 ± 0.0031 |
+| mean | 50 | 0.4526 ± 0.0225 | 0.8720 ± 0.0040 | 0.3898 ± 0.0025 |
+| upper | 10 | 0.4941 ± 0.0663 | 0.8630 ± 0.0070 | 0.3899 ± 0.0058 |
+| upper | 20 | 0.4680 ± 0.0382 | 0.8686 ± 0.0056 | 0.3894 ± 0.0030 |
+| upper | 30 | 0.4618 ± 0.0382 | 0.8693 ± 0.0049 | 0.3864 ± 0.0047 |
+| upper | 50 | 0.4614 ± 0.0232 | 0.8698 ± 0.0040 | 0.3875 ± 0.0031 |
+
+### 13.4 Comparison with Uniform Mass
+
+| Model | Method | K | FPR@95 (test) | ROC-AUC (test) | AURC (test) | Δ FPR vs UM |
+|-------|--------|---|---------------|----------------|-------------|-------------|
+| ViT-Ti/16 | Uniform Mass | 30 | 0.4749 ± 0.0110 | 0.8649 ± 0.0030 | 0.4794 ± 0.0041 | - |
+| ViT-Ti/16 | Supervised Partition (1D) | 30 | 0.4795 ± 0.0325 | 0.8653 ± 0.0014 | 0.4794 ± 0.0034 | +0.97% |
+| ViT-Ti/16 | Supervised Partition (2D) | 30 | 0.4915 ± 0.0352 | 0.8648 ± 0.0018 | 0.4793 ± 0.0042 | +3.50% |
+| ViT-B/16 | Uniform Mass | 30 | 0.4466 ± 0.0155 | 0.8739 ± 0.0023 | 0.3873 ± 0.0025 | - |
+| ViT-B/16 | Supervised Partition (1D) | 30 | 0.4501 ± 0.0242 | 0.8735 ± 0.0022 | 0.3861 ± 0.0033 | +0.78% |
+| ViT-B/16 | Supervised Partition (2D) | 30 | 0.4618 ± 0.0382 | 0.8693 ± 0.0049 | 0.3864 ± 0.0047 | +3.40% |
+
+### 13.5 Observations
+
+1. **Supervised Partition does NOT improve over Uniform Mass:**
+   - 1D Supervised Partition: +0.78% to +0.97% worse FPR@95
+   - 2D Supervised Partition: +3.40% to +3.50% worse FPR@95
+   - ROC-AUC and AURC are essentially identical
+
+2. **Higher variance with Supervised Partition:**
+   - Uniform Mass: std ≈ 0.011-0.016
+   - Supervised Partition 1D: std ≈ 0.024-0.033
+   - Supervised Partition 2D: std ≈ 0.035-0.038
+   - The supervised method is less stable across seeds
+
+3. **2D Supervised Partition is worse than 1D:**
+   - Adding Margin dimension does not help
+   - Consistent with 2D K-means constrained results
+
+### 13.6 Analysis: Why Doesn't Supervised Partition Help?
+
+The hypothesis was that using error labels during partitioning would create better-separated bins. However, the results show no improvement. Possible explanations:
+
+1. **Uncertainty scores already capture error information well:**
+   - Gini/Doctor score is already strongly correlated with error probability
+   - Simple quantile-based binning (Uniform Mass) already creates well-separated bins
+   - Supervised splitting doesn't provide additional information
+
+2. **Overfitting to res split:**
+   - Supervised Partition uses error labels from res (5000 samples) to determine splits
+   - These splits may not generalize well to cal/test
+   - Uniform Mass uses only score values, which generalizes better
+
+3. **Greedy splitting is suboptimal:**
+   - The algorithm greedily selects the best split at each step
+   - This may not lead to globally optimal partitioning
+   - Simple quantile bins may achieve similar or better separation
+
+### 13.7 Conclusion
+
+**Supervised Partition does not improve over Uniform Mass binning.** Despite using error labels to guide splits, it achieves worse FPR@95 with higher variance. The simple unsupervised Uniform Mass method remains the best choice.
+
+This result, combined with Section 12 (2D/3D score combinations), strongly suggests that:
+- **Single-score Doctor with Uniform Mass binning is optimal**
+- More complex supervised or multi-dimensional methods do not help
+- The Doctor score already captures the essential uncertainty information for error detection

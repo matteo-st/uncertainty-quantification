@@ -22,6 +22,12 @@ try:
 except ImportError:
     HAS_KMEANS_CONSTRAINED = False
 
+try:
+    from optbinning import OptimalBinning, BinningProcess
+    HAS_OPTBINNING = True
+except ImportError:
+    HAS_OPTBINNING = False
+
 # from sklearn.cluster import KMeans, MiniBatchKMeans
 # from sklearn.mixture import GaussianMixture
 
@@ -106,6 +112,13 @@ class PartitionPostprocessor(BasePostprocessor):
         self.sp_balance_penalty = cfg.get("balance_penalty", False)
         self.sp_max_samples_factor = cfg.get("max_samples_factor", None)  # e.g., 1.3 means max = 1.3 * n/B
 
+        ### OptBinning Parameters (for method="optbinning")
+        self.optbinning_solver = cfg.get("optbinning_solver", "cp")  # cp, mip
+        self.optbinning_monotonic = cfg.get("optbinning_monotonic", "ascending")
+        self.optbinning_min_bin_size = cfg.get("optbinning_min_bin_size", 0.05)
+        self._optbinning_multi = False  # Will be set in fit_quantizer
+        self._binning_process = None  # For multi-dimensional case
+
         self.__init__quantizer()
 
 
@@ -182,6 +195,15 @@ class PartitionPostprocessor(BasePostprocessor):
             # since we need error labels for supervised splitting
             self.clustering_algo = None
             # Parameters already set in __init__: sp_quantiles, sp_balance_penalty, sp_max_samples_factor
+
+        elif self.method == "optbinning":
+            if not HAS_OPTBINNING:
+                raise ImportError(
+                    "optbinning package not installed. "
+                    "Install with: pip install optbinning"
+                )
+            # OptimalBinning/BinningProcess will be instantiated in fit_quantizer
+            self.clustering_algo = None
 
         elif self.method in ["unif-width", "unif-mass", "quantile-merge", "raw-score", "isotonic-binning"]:
             pass
@@ -481,6 +503,24 @@ class PartitionPostprocessor(BasePostprocessor):
             cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
             return cluster
 
+        elif self.method == "optbinning":
+            if embs.dim() > 1 and embs.size(1) == 1:
+                embs = embs.squeeze(1)
+
+            if not self._optbinning_multi:
+                # 1D case
+                X = embs.detach().cpu().numpy().reshape(-1)
+                cluster_labels = self.clustering_algo.transform(X, metric="indices")
+            else:
+                # Multi-dim case: transform via BinningProcess first
+                X = embs.detach().cpu().numpy()
+                X_woe = self._binning_process.transform(X, metric="woe")
+                combined_woe = X_woe.sum(axis=1)
+                cluster_labels = self.clustering_algo.transform(combined_woe, metric="indices")
+
+            cluster = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
+            return cluster
+
         else:
             if self.reducer is not None:
                 embs = self.reducer.transform(embs.cpu().numpy())
@@ -697,6 +737,69 @@ class PartitionPostprocessor(BasePostprocessor):
 
             # Store leaf info for analysis
             self._sp_leaf_info = self.clustering_algo.get_leaf_info()
+
+        elif self.method == "optbinning":
+            # Get error labels (binary)
+            errors = detector_labels.detach().cpu().numpy().astype(int)
+
+            # Handle 1D vs multi-dimensional scores
+            if all_embs.dim() > 1 and all_embs.size(1) == 1:
+                all_embs = all_embs.squeeze(1)
+
+            if all_embs.dim() == 1:
+                # 1D score: use OptimalBinning directly
+                X = all_embs.detach().cpu().numpy().reshape(-1)
+                self._optbinning_multi = False
+
+                self.clustering_algo = OptimalBinning(
+                    dtype="numerical",
+                    solver=self.optbinning_solver,
+                    monotonic_trend=self.optbinning_monotonic,
+                    min_bin_size=self.optbinning_min_bin_size,
+                    max_n_bins=self.n_clusters,
+                )
+                self.clustering_algo.fit(X, errors)
+
+                # Get cluster assignments
+                cluster_labels = self.clustering_algo.transform(X, metric="indices")
+                self.n_clusters = len(np.unique(cluster_labels))
+
+            else:
+                # Multi-dimensional: use BinningProcess to bin each score separately
+                # Then sum WoE values and bin the combined score
+                X = all_embs.detach().cpu().numpy()  # (N, n_scores)
+                n_scores = X.shape[1]
+                self._optbinning_multi = True
+
+                # Create variable names
+                var_names = [f"score_{i}" for i in range(n_scores)]
+
+                # Fit BinningProcess
+                self._binning_process = BinningProcess(
+                    variable_names=var_names,
+                    max_n_prebins=20,
+                    min_prebin_size=self.optbinning_min_bin_size,
+                )
+                self._binning_process.fit(X, errors)
+
+                # Transform to WoE values and sum
+                X_woe = self._binning_process.transform(X, metric="woe")
+                combined_woe = X_woe.sum(axis=1)  # Sum WoE across scores
+
+                # Bin the combined WoE score
+                self.clustering_algo = OptimalBinning(
+                    dtype="numerical",
+                    solver=self.optbinning_solver,
+                    monotonic_trend=self.optbinning_monotonic,
+                    min_bin_size=self.optbinning_min_bin_size,
+                    max_n_bins=self.n_clusters,
+                )
+                self.clustering_algo.fit(combined_woe, errors)
+
+                cluster_labels = self.clustering_algo.transform(combined_woe, metric="indices")
+                self.n_clusters = len(np.unique(cluster_labels))
+
+            clusters = torch.tensor(cluster_labels, device=self.device, dtype=torch.long)
 
         elif self.method == "quantile-merge":
             embs = all_embs.squeeze()

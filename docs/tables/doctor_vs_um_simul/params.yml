@@ -1,0 +1,16 @@
+# Parameters used to generate this table
+# Generated: 2026-01-21T00:39:23.984077
+
+score_name: Doctor
+baseline:
+  postprocessor: doctor
+  run_tag: doctor-grid-20260120
+  selection: best on res (minimize FPR@95)
+partition:
+  run_tag: doctor-unif-mass-sim-grid-20260120
+  alpha: 0.05
+  score: upper
+  k_selection: rice_rule
+  rice_k: {'cifar10': 30, 'cifar100': 30, 'imagenet': 50}
+n_seeds: 9
+results_dir: results

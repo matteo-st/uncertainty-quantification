@@ -1,0 +1,8 @@
+# Parameters used to generate multiplot
+# Generated: 2026-01-21T01:02:23.681632
+
+score_name: doctor
+baseline_run_tag: doctor-grid-20260120
+partition_run_tag: doctor-unif-mass-sim-grid-20260120
+n_seeds: 9
+results_dir: results

@@ -1,6 +1,6 @@
-# Uniform-Mass Binning Investigation Report
+# Partition Binning Investigation Report
 
-Last updated: 2026-01-12
+Last updated: 2026-01-22
 
 ## Objective
 Quantify how uniform-mass binning behaves when only a calibration split is available (n_cal=5000, n_res=0), and compare upper-bound scoring vs empirical-mean scoring against the continuous-score baseline.
@@ -134,3 +134,81 @@ python scripts/diagnostics/ablation_k_test_curve.py \
 ```
 
 Copy the resulting `*_roc_auc.png` and `*_fpr.png` plots into `partition_binning_assets/` using the filenames referenced above.
+
+---
+
+## Supervised Partition Experiments (ImageNet)
+
+Last updated: 2026-01-22
+
+### Objective
+Compare supervised partition methods (risk-aware recursive partitioning using error labels) against unsupervised UniformMass binning on ImageNet.
+
+### Experimental Setup
+- **Dataset:** ImageNet (n_res=5000, n_cal=20000, n_test=25000)
+- **Models:** ViT-Tiny16, ViT-Base16
+- **Score spaces:**
+  - 1D: Doctor/Gini score
+  - 2D: Doctor + Margin (combined, normalized)
+- **Fit splits:**
+  - RES fit: Partition fitted on res split (5000 samples)
+  - CAL fit: Partition fitted on cal split (20000 samples)
+- **Seeds:** 1-9
+- **Hyperparameter grid:** n_clusters ∈ {10, 20, 30, 50}, score ∈ {mean, upper}
+- **CI settings:** alpha=0.05, bound=hoeffding, simultaneous=true
+
+### Results Summary
+
+#### UniformMass Baseline (gini space)
+
+| Model | n_clusters | score | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|---|---|---|---|---|---|
+| ViT-Tiny16 | 100 | mean | 0.4685 ± 0.0104 | 0.8639 ± 0.0038 | 0.4787 ± 0.0049 |
+| ViT-Base16 | 100 | mean | 0.4418 ± 0.0134 | 0.8729 ± 0.0024 | 0.3879 ± 0.0027 |
+
+#### Supervised Partition Results
+
+| Model | Space | Fit Split | n_clusters | score | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|---|---|---|---|---|---|---|---|
+| ViT-Tiny16 | 1D (gini) | res | 50 | upper | 0.4738 ± 0.0227 | 0.8654 ± 0.0012 | 0.4800 ± 0.0033 |
+| ViT-Base16 | 1D (gini) | res | 20 | mean | 0.4572 ± 0.0432 | 0.8735 ± 0.0024 | 0.3872 ± 0.0034 |
+| ViT-Tiny16 | 1D (gini) | cal | 50 | mean | 0.4680 ± 0.0215 | 0.8657 ± 0.0013 | 0.4798 ± 0.0031 |
+| ViT-Base16 | 1D (gini) | cal | 20 | mean | 0.4610 ± 0.0464 | 0.8723 ± 0.0023 | 0.3864 ± 0.0032 |
+| ViT-Tiny16 | 2D (gini+margin) | res | 20 | mean | 0.4725 ± 0.0139 | 0.8652 ± 0.0019 | 0.4813 ± 0.0036 |
+| ViT-Base16 | 2D (gini+margin) | res | 10 | mean | 0.4597 ± 0.0417 | 0.8698 ± 0.0062 | 0.3902 ± 0.0035 |
+| ViT-Tiny16 | 2D (gini+margin) | cal | 50 | mean | 0.4728 ± 0.0197 | 0.8666 ± 0.0016 | 0.4811 ± 0.0033 |
+| ViT-Base16 | 2D (gini+margin) | cal | 10 | mean | 0.4652 ± 0.0443 | 0.8709 ± 0.0027 | 0.3861 ± 0.0025 |
+
+### Key Findings
+
+1. **Supervised Partition vs UniformMass:**
+   - **ViT-Tiny16:** Supervised partition shows slightly better ROC-AUC (0.8654-0.8666) compared to UniformMass (0.8639), with comparable FPR@95 and AURC.
+   - **ViT-Base16:** Results are comparable. UniformMass achieves slightly better ROC-AUC (0.8729) than most supervised partition configurations.
+
+2. **RES fit vs CAL fit:**
+   - Results are very similar between RES (5k samples) and CAL (20k samples) fitting.
+   - CAL fit does not provide significant improvement over RES fit, suggesting 5k samples may be sufficient for partition fitting.
+
+3. **1D vs 2D score space:**
+   - 2D (gini+margin) does not improve over 1D (gini) for supervised partition.
+   - This contrasts with expectations that combining scores would provide better separation.
+
+4. **Score type (mean vs upper):**
+   - Most best configurations use `score=mean` rather than `score=upper`.
+   - This indicates the upper bound may be too conservative for these sample sizes.
+
+5. **Number of clusters:**
+   - Optimal n_clusters varies: 20-50 for most configurations.
+   - Higher n_clusters (50) tends to be selected when more calibration data is available (CAL fit).
+
+### Run Tags
+- `supervised-partition-gini-20260122` - 1D, RES fit
+- `supervised-partition-gini-cal-fit-20260122` - 1D, CAL fit
+- `supervised-partition-gini-margin-20260122` - 2D, RES fit
+- `supervised-partition-gini-margin-cal-fit-20260122` - 2D, CAL fit
+- `doctor-unif-mass-sim-grid-20260120` - UniformMass baseline
+
+### Next Steps
+- Run OptBinning experiments for comparison (optimal binning w.r.t. error labels)
+- Investigate why 2D scores don't improve over 1D
+- Test with different hyperparameter grids (more n_clusters values)

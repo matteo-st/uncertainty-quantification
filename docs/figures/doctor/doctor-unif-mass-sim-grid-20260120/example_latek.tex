@@ -1,0 +1,190 @@
+
+\subsection{Impact of the Number of Bins}
+\label{sec:ablation_bins}
+
+We study how the number of bins $K$ affects the performance of our certified detector (CD) when applied to different uncertainty scores.
+Figures~\ref{fig:ablation_bins_doctor}, \ref{fig:ablation_bins_margin}, and \ref{fig:ablation_bins_msp} show the results for Doctor, Margin, and MSP scores respectively.
+In each figure, the colored curves show the certified detector for different confidence levels $\alpha \in \{0.01, 0.05, 0.1\}$, while the dashed purple curve shows the mean estimate.
+The red horizontal line represents the uncertified baseline score, with the shaded region indicating $\pm 1$ standard deviation across 9 random splits.
+The vertical dashed gray line marks Stone's rule recommendation for the number of bins: $K = \lceil 2n^{1/3} \rceil$, where $n$ is the calibration set size.
+
+% ============================================================
+% Figure 1: Doctor
+% ============================================================
+\begin{figure*}[t]
+  \centering
+
+  % ---------- Row 1: ResNet-34 ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/cifar10_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, ResNet-34}
+    \label{fig:bins_doctor_cifar10_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/cifar100_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, ResNet-34}
+    \label{fig:bins_doctor_cifar100_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/imagenet_timm_vit_base16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-B/16}
+    \label{fig:bins_doctor_imagenet_vit_base}
+  \end{subfigure}
+
+  \vspace{0.5em}
+
+  % ---------- Row 2: DenseNet-121 / ViT-Ti ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/cifar10_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, DenseNet-121}
+    \label{fig:bins_doctor_cifar10_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/cifar100_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, DenseNet-121}
+    \label{fig:bins_doctor_cifar100_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/doctor/imagenet_timm_vit_tiny16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-Ti/16}
+    \label{fig:bins_doctor_imagenet_vit_tiny}
+  \end{subfigure}
+
+  \caption{%
+    \textbf{Impact of the number of bins on ROC-AUC performance (Doctor score).}
+    Each panel shows ROC-AUC (test) as a function of the number of uniform-mass bins $K$.
+    Curves correspond to the certified detector (CD) at different confidence levels $\alpha$ (solid) and the mean estimate (dashed purple).
+    The red line/band shows the uncertified Doctor baseline ($\pm 1$ std).
+    The vertical gray dashed line indicates Stone's rule: $K = \lceil 2n^{1/3} \rceil$.
+    Results are averaged over 9 random calibration/test splits; error bars show $\pm 1$ std.
+  }
+  \label{fig:ablation_bins_doctor}
+\end{figure*}
+
+% ============================================================
+% Figure 2: Margin
+% ============================================================
+\begin{figure*}[t]
+  \centering
+
+  % ---------- Row 1: ResNet-34 ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar10_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, ResNet-34}
+    \label{fig:bins_margin_cifar10_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar100_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, ResNet-34}
+    \label{fig:bins_margin_cifar100_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/imagenet_timm_vit_base16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-B/16}
+    \label{fig:bins_margin_imagenet_vit_base}
+  \end{subfigure}
+
+  \vspace{0.5em}
+
+  % ---------- Row 2: DenseNet-121 / ViT-Ti ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar10_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, DenseNet-121}
+    \label{fig:bins_margin_cifar10_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar100_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, DenseNet-121}
+    \label{fig:bins_margin_cifar100_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/imagenet_timm_vit_tiny16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-Ti/16}
+    \label{fig:bins_margin_imagenet_vit_tiny}
+  \end{subfigure}
+
+  \caption{%
+    \textbf{Impact of the number of bins on ROC-AUC performance (Margin score).}
+    Each panel shows ROC-AUC (test) as a function of the number of uniform-mass bins $K$.
+    Curves correspond to the certified detector (CD) at different confidence levels $\alpha$ (solid) and the mean estimate (dashed purple).
+    The red line/band shows the uncertified Margin baseline ($\pm 1$ std).
+    The vertical gray dashed line indicates Stone's rule: $K = \lceil 2n^{1/3} \rceil$.
+    Results are averaged over 9 random calibration/test splits; error bars show $\pm 1$ std.
+  }
+  \label{fig:ablation_bins_margin}
+\end{figure*}
+
+% ============================================================
+% Figure 3: MSP
+% ============================================================
+\begin{figure*}[t]
+  \centering
+
+  % ---------- Row 1: ResNet-34 ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/cifar10_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, ResNet-34}
+    \label{fig:bins_msp_cifar10_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/cifar100_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, ResNet-34}
+    \label{fig:bins_msp_cifar100_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/imagenet_timm_vit_base16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-B/16}
+    \label{fig:bins_msp_imagenet_vit_base}
+  \end{subfigure}
+
+  \vspace{0.5em}
+
+  % ---------- Row 2: DenseNet-121 / ViT-Ti ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/cifar10_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, DenseNet-121}
+    \label{fig:bins_msp_cifar10_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/cifar100_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, DenseNet-121}
+    \label{fig:bins_msp_cifar100_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/msp/imagenet_timm_vit_tiny16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-Ti/16}
+    \label{fig:bins_msp_imagenet_vit_tiny}
+  \end{subfigure}
+
+  \caption{%
+    \textbf{Impact of the number of bins on ROC-AUC performance (MSP score).}
+    Each panel shows ROC-AUC (test) as a function of the number of uniform-mass bins $K$.
+    Curves correspond to the certified detector (CD) at different confidence levels $\alpha$ (solid) and the mean estimate (dashed purple).
+    The red line/band shows the uncertified MSP baseline ($\pm 1$ std).
+    The vertical gray dashed line indicates Stone's rule: $K = \lceil 2n^{1/3} \rceil$.
+    Results are averaged over 9 random calibration/test splits; error bars show $\pm 1$ std.
+  }
+  \label{fig:ablation_bins_msp}
+\end{figure*}
+
+As expected, performance generally decreases with more bins due to fewer samples per bin, leading to wider confidence intervals.
+However, the degradation remains modest for $K$ values around Stone's rule, suggesting this heuristic provides a reasonable trade-off between granularity and statistical reliability.
+The results are consistent across all three uncertainty scores.

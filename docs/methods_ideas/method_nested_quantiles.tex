@@ -1,0 +1,43 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+
+\begin{document}
+
+\section*{2D uniform-mass rectangles via nested quantiles}
+
+Let $\{(u_{1,k},u_{2,k})\}_{k=1}^n\subset[0,1]^2$ be the (rank-normalized) uncertainty features
+computed on the calibration split.
+Fix integers $m_1,m_2\in\mathbb N$ and set $B=m_1m_2$.
+
+\paragraph{Step 1 (equal-mass slabs in $u_1$).}
+Let $t_0=0<t_1<\cdots<t_{m_1}=1$ be empirical quantile cutpoints of $\{u_{1,k}\}_{k=1}^n$
+chosen so that each interval
+\[
+I_a \coloneqq [t_{a-1},t_a),\qquad a\in[m_1],
+\]
+contains approximately $n/m_1$ samples (up to rounding/ties).
+
+\paragraph{Step 2 (conditional equal-mass bins in $u_2$).}
+For each $a\in[m_1]$, restrict to the indices
+\[
+S_a \coloneqq \{k\in[n]: u_{1,k}\in I_a\}.
+\]
+Let $s_{a,0}=0<s_{a,1}<\cdots<s_{a,m_2}=1$ be empirical quantile cutpoints of
+$\{u_{2,k}\}_{k\in S_a}$ chosen so that each interval
+\[
+J_{a,b} \coloneqq [s_{a,b-1},s_{a,b}),\qquad b\in[m_2],
+\]
+contains approximately $|S_a|/m_2 \approx n/B$ samples.
+
+\paragraph{Rectangles and quantizer.}
+Define the $B$ rectangles
+\[
+R_{a,b} \coloneqq I_a\times J_{a,b},\qquad (a,b)\in[m_1]\times[m_2],
+\]
+and the induced quantizer $Q:[0,1]^2\to[m_1]\times[m_2]$ by
+\[
+Q(u_1,u_2)=(a,b)\quad\Longleftrightarrow\quad (u_1,u_2)\in R_{a,b}.
+\]
+By construction, each $R_{a,b}$ contains approximately $n/B$ calibration samples.
+
+\end{document}

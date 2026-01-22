@@ -1,0 +1,64 @@
+
+\subsection{Impact of the Number of Bins (Margin Score)}
+\label{sec:ablation_bins_margin}
+
+Figure~\ref{fig:ablation_bins_margin} shows how the number of bins $K$ affects the performance of the certified detector (CD) when applied to the Margin score.
+The colored curves show the certified detector for different confidence levels $\alpha \in \{0.01, 0.05, 0.1\}$, while the dashed purple curve shows the mean estimate.
+The red horizontal line represents the uncertified Margin score baseline, with the shaded region indicating $\pm 1$ standard deviation across 9 random splits.
+The vertical dashed gray line marks Stone's rule recommendation for the number of bins: $K = \lceil 2n^{1/3} \rceil$, where $n$ is the calibration set size.
+
+\begin{figure*}[t]
+  \centering
+
+  % ---------- Row 1: ResNet-34 ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar10_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, ResNet-34}
+    \label{fig:bins_margin_cifar10_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar100_resnet34_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, ResNet-34}
+    \label{fig:bins_margin_cifar100_resnet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/imagenet_timm_vit_base16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-B/16}
+    \label{fig:bins_margin_imagenet_vit_base}
+  \end{subfigure}
+
+  \vspace{0.5em}
+
+  % ---------- Row 2: DenseNet-121 / ViT-Ti ----------
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar10_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-10, DenseNet-121}
+    \label{fig:bins_margin_cifar10_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/cifar100_densenet121_ce_rocauc_vs_nclusters.pdf}
+    \caption{CIFAR-100, DenseNet-121}
+    \label{fig:bins_margin_cifar100_densenet}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{images/margin/imagenet_timm_vit_tiny16_ce_rocauc_vs_nclusters.pdf}
+    \caption{ImageNet, ViT-Ti/16}
+    \label{fig:bins_margin_imagenet_vit_tiny}
+  \end{subfigure}
+
+  \caption{%
+    \textbf{Impact of the number of bins on ROC-AUC performance (Margin score).}
+    Each panel shows ROC-AUC (test) as a function of the number of uniform-mass bins $K$.
+    Curves correspond to the certified detector (CD) at different confidence levels $\alpha$ (solid) and the mean estimate (dashed purple).
+    The red line/band shows the uncertified Margin baseline ($\pm 1$ std).
+    The vertical gray dashed line indicates Stone's rule: $K = \lceil 2n^{1/3} \rceil$.
+    Results are averaged over 9 random calibration/test splits; error bars show $\pm 1$ std.
+  }
+  \label{fig:ablation_bins_margin}
+\end{figure*}

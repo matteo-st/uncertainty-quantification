@@ -1,0 +1,130 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=1in]{geometry}
+
+\begin{document}
+
+\section*{Option 3: Risk-aware balanced recursive partition into axis-aligned rectangles (2D)}
+
+\paragraph{Goal.}
+Given calibration data
+\[
+\mathcal D = \{(u_{1,k},u_{2,k},E_k)\}_{k=1}^n,\qquad (u_{1,k},u_{2,k})\in[0,1]^2,\ E_k\in\{0,1\},
+\]
+construct $B$ axis-aligned rectangles (leaf regions) with \emph{near-uniform mass} (roughly $n/B$ points per leaf),
+where splits are chosen to \emph{separate error rates} between children.
+
+\paragraph{Node representation.}
+A node (region) $\nu$ stores:
+\begin{itemize}
+  \item an index set $S_\nu \subseteq [n]$ of points currently in the node,
+  \item a bounding box $R_\nu = [\ell_{1,\nu}, r_{1,\nu}) \times [\ell_{2,\nu}, r_{2,\nu}) \subseteq [0,1]^2$,
+  \item the empirical error rate $\widehat\eta(\nu) \coloneqq \frac{1}{|S_\nu|}\sum_{k\in S_\nu} E_k$.
+\end{itemize}
+The root node is $\nu_0$ with $S_{\nu_0}=[n]$ and $R_{\nu_0}=[0,1)\times[0,1)$.
+
+\paragraph{Size constraint (near-uniform mass).}
+Fix
+\[
+n_{\min} \coloneqq \left\lfloor \frac{n}{B} \right\rfloor \quad (\text{e.g., } n=4000,\ B=30 \Rightarrow n_{\min}\approx 133).
+\]
+Every split must produce children with at least $n_{\min}$ points.
+
+\paragraph{Candidate thresholds.}
+Fix a small set of quantile levels
+\[
+\mathcal Q = \{q_1,\dots,q_M\}\subset(0,1)\quad \text{(e.g., } \{0.1,0.2,\dots,0.9\}\text{)}.
+\]
+For a node $\nu$ and dimension $d\in\{1,2\}$, define candidate thresholds
+\[
+\tau \in \Big\{ \mathrm{Quantile}_{q}( \{u_{d,k}:k\in S_\nu\} ) : q\in\mathcal Q \Big\},
+\]
+optionally discarding duplicates (ties).
+
+\paragraph{Split and score.}
+For node $\nu$, a candidate split $(d,\tau)$ induces children:
+\[
+S_L=\{k\in S_\nu: u_{d,k}\le \tau\}, \qquad S_R = S_\nu\setminus S_L,
+\]
+with corresponding rectangles (updating only the split coordinate bounds):
+\[
+R_L = R_\nu \cap \{u_d \le \tau\},\qquad R_R = R_\nu \cap \{u_d > \tau\}.
+\]
+The split is \emph{admissible} if $|S_L|\ge n_{\min}$ and $|S_R|\ge n_{\min}$.
+
+Define empirical child error rates
+\[
+\widehat\eta_L=\frac{1}{|S_L|}\sum_{k\in S_L}E_k,\qquad
+\widehat\eta_R=\frac{1}{|S_R|}\sum_{k\in S_R}E_k.
+\]
+A simple, effective split score is the absolute separation:
+\[
+\Delta(d,\tau;\nu)\coloneqq |\widehat\eta_L - \widehat\eta_R|.
+\]
+Optionally (to discourage very unbalanced splits even when admissible), use
+\[
+\Delta'(d,\tau;\nu) \coloneqq \Delta(d,\tau;\nu)\cdot \sqrt{\frac{|S_L||S_R|}{|S_\nu|^2}}.
+\]
+(Use either $\Delta$ or $\Delta'$ consistently.)
+
+\paragraph{Tree growth strategy (exactly $B$ leaves).}
+Maintain a set of current leaves $\mathcal L$ (initially $\{\nu_0\}$). Repeatedly split \emph{one} current leaf at a time until $|\mathcal L|=B$.
+At each iteration, among all leaves, select the leaf whose \emph{best admissible split} has the largest score.
+
+\begin{algorithm}[h]
+\caption{Risk-aware balanced rectangle partition (2D)}
+\begin{algorithmic}[1]
+\Require Data $\mathcal D=\{(u_{1,k},u_{2,k},E_k)\}_{k=1}^n$, target leaves $B$, quantiles $\mathcal Q$, minimum leaf size $n_{\min}$.
+\Ensure A binary tree; leaves define rectangles $\{R_\nu\}_{\nu\in\mathcal L}$, with associated $S_\nu$ and $\widehat\eta(\nu)$.
+\State Initialize root leaf $\nu_0$ with $S_{\nu_0}=[n]$, $R_{\nu_0}=[0,1)\times[0,1)$.
+\State $\mathcal L \gets \{\nu_0\}$.
+\While{$|\mathcal L|<B$}
+  \State $bestLeaf \gets \text{None}$; $bestSplit \gets \text{None}$; $bestScore \gets -\infty$.
+  \ForAll{leaves $\nu\in\mathcal L$}
+    \State Compute the best admissible split $(d^\star,\tau^\star)$ for $\nu$:
+      \Statex\quad $score^\star(\nu) \gets \max\{\Delta(d,\tau;\nu): d\in\{1,2\},\ \tau\in \mathcal T_{d,\nu},\ \text{admissible}\}$
+      \Statex\quad where $\mathcal T_{d,\nu}$ are candidate thresholds from quantiles in $\mathcal Q$.
+    \If{no admissible split exists for $\nu$} \State continue \EndIf
+    \If{$score^\star(\nu) > bestScore$}
+      \State $bestScore \gets score^\star(\nu)$
+      \State $bestLeaf \gets \nu$
+      \State $bestSplit \gets (d^\star,\tau^\star)$
+    \EndIf
+  \EndFor
+  \If{$bestLeaf$ is None} \Comment{no admissible splits anywhere}
+    \State \textbf{break}
+  \EndIf
+  \State Split $bestLeaf$ using $bestSplit$ into children $\nu_L,\nu_R$:
+  \Statex\quad $S_{\nu_L}=\{k\in S_{bestLeaf}: u_{d^\star,k}\le \tau^\star\}$, $S_{\nu_R}=S_{bestLeaf}\setminus S_{\nu_L}$
+  \Statex\quad $R_{\nu_L}=R_{bestLeaf}\cap\{u_{d^\star}\le \tau^\star\}$,\ \ $R_{\nu_R}=R_{bestLeaf}\cap\{u_{d^\star}>\tau^\star\}$
+  \State Update leaf set: $\mathcal L \gets (\mathcal L\setminus\{bestLeaf\})\cup\{\nu_L,\nu_R\}$.
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Output.}
+The final leaves $\mathcal L$ define $|\mathcal L|\le B$ rectangles $\{R_\nu\}$.
+For each leaf, store:
+\[
+R_\nu = [\ell_{1,\nu}, r_{1,\nu}) \times [\ell_{2,\nu}, r_{2,\nu}),\qquad
+\widehat\eta(\nu) = \frac{1}{|S_\nu|}\sum_{k\in S_\nu}E_k,\qquad |S_\nu|.
+\]
+In downstream calibration/certification, treat $Q(u_1,u_2)=\nu$ if $(u_1,u_2)\in R_\nu$.
+
+\paragraph{Inference-time assignment.}
+Given a new point $(u_1,u_2)$, traverse the tree from the root:
+at each internal node with split $(d,\tau)$ go left if $u_d\le \tau$ and right otherwise, until a leaf $\nu$ is reached.
+Return $Q(u_1,u_2)=\nu$.
+
+\paragraph{Implementation notes (important for correctness).}
+\begin{itemize}
+  \item \textbf{Ties at thresholds.} Use the convention ``left if $u_d\le\tau$'' consistently in both training and inference.
+  \item \textbf{Quantile computation.} Quantiles are empirical over $\{u_{d,k}:k\in S_\nu\}$; remove duplicates to avoid empty children.
+  \item \textbf{Exact $B$ leaves.} The loop increases leaf count by $+1$ each split. If no admissible split exists before reaching $B$, you stop early.
+  \item \textbf{Uniformity.} This enforces a \emph{lower bound} $n_{\min}$; if you want tighter near-uniformity, also enforce an upper bound
+        $|S_{\text{child}}|\le n_{\max}$ (e.g.\ $n_{\max}\approx \lceil 1.3\,n/B\rceil$) by discarding splits that create too-large leaves.
+\end{itemize}
+
+\end{document}

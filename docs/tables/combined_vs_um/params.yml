@@ -1,0 +1,12 @@
+# Parameters used to generate this table
+# Generated: 2026-01-21T17:25:16.780418
+
+scores: ['Margin', 'MSP', 'Doctor']
+metric: aurc
+partition:
+  alpha: 0.05
+  score: upper
+  k_selection: rice_rule
+  rice_k: {'cifar10': 30, 'cifar100': 30, 'imagenet': 50}
+n_seeds: 9
+results_dir: results

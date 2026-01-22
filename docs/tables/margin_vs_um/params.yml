@@ -1,5 +1,5 @@
 # Parameters used to generate this table
-# Generated: 2026-01-20T22:17:04.016172
+# Generated: 2026-01-21T17:25:14.679135
 
 score_name: Margin
 baseline:
@@ -7,7 +7,7 @@ baseline:
   run_tag: margin-grid-20260120
   selection: best on res (minimize FPR@95)
 partition:
-  run_tag: margin-unif-mass-grid-20260120
+  run_tag: margin-unif-mass-sim-grid-20260120
   alpha: 0.05
   score: upper
   k_selection: rice_rule

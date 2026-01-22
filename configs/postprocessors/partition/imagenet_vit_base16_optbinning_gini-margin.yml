@@ -1,0 +1,57 @@
+# OptBinning (2D: Doctor + Margin) - Fit on Cal Split
+# Optimal binning with respect to binary target (error labels)
+# Multi-score combination via BinningProcess + WoE sum
+# Partition fitted on cal split (20000 samples)
+
+name: partition
+postprocessor_args:
+  method: optbinning
+  n_clusters: 10  # max_n_bins
+  alpha: 0.05
+  bound: hoeffding
+  simultaneous: true
+  score: upper
+  space: combined  # Multi-dimensional
+  base_scores: [gini, margin]
+  normalize_combined: true
+  temperature: 1.0
+  normalize: true
+  magnitude: 0.0
+  n_classes: 1000
+  reorder_embs: false
+  pred_weights: 0
+  init_scheme: null
+  n_init: null
+  max_iter: null
+  clustering_seed: 42
+  # OptBinning parameters
+  optbinning_solver: cp
+  optbinning_monotonic: ascending
+  optbinning_min_bin_size: 0.05
+
+experience_args:
+  fit_partition_on_cal: true  # Fit on full cal split
+  n_folds: null
+  fit_after_cv: false
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+  score_selections:
+    gini:
+      postprocessor: doctor
+      metric: fpr
+      split: res
+      run_tag: doctor-grid-20260120
+    margin:
+      postprocessor: margin
+      metric: fpr
+      split: res
+      run_tag: margin-grid-20260120
+
+postprocessor_grid:
+  n_clusters: [5, 10, 15, 20, 30, 50]
+  alpha: [0.05]
+  score: [upper, mean]

@@ -1,0 +1,22 @@
+% Doctor vs Uniform Mass binning (Stone's rule). Mean ± std over 9 seeds.
+\begin{table}[t]
+\centering
+\caption{Doctor vs.\ Uniform Mass binning (Stone's rule). Mean $\pm$ std over 9 seeds.}
+\label{tab:doctor_vs_uniform_mass}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{ROC-AUC} $\uparrow$} & \multicolumn{2}{c}{\textbf{AURC} $\downarrow$} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+\textbf{Dataset} & \textbf{Model} & Doctor & UM & Doctor & UM \\
+\midrule
+ImageNet & ViT-B/16 & \textbf{.875}{\scriptsize $\pm$.002} & .873{\scriptsize $\pm$.002} & .388{\scriptsize $\pm$.002} & \textbf{.388}{\scriptsize $\pm$.002} \\
+ImageNet & ViT-Ti/16 & \textbf{.865}{\scriptsize $\pm$.002} & .864{\scriptsize $\pm$.003} & .480{\scriptsize $\pm$.003} & \textbf{.479}{\scriptsize $\pm$.003} \\
+CIFAR-100 & ResNet-34 & .874{\scriptsize $\pm$.004} & \textbf{.876}{\scriptsize $\pm$.006} & \textbf{.434}{\scriptsize $\pm$.008} & .438{\scriptsize $\pm$.008} \\
+CIFAR-100 & DenseNet-121 & \textbf{.857}{\scriptsize $\pm$.003} & .853{\scriptsize $\pm$.004} & .486{\scriptsize $\pm$.008} & \textbf{.483}{\scriptsize $\pm$.009} \\
+CIFAR-10 & ResNet-34 & \textbf{.923}{\scriptsize $\pm$.011} & .904{\scriptsize $\pm$.018} & \textbf{.138}{\scriptsize $\pm$.010} & .145{\scriptsize $\pm$.008} \\
+CIFAR-10 & DenseNet-121 & .898{\scriptsize $\pm$.039} & \textbf{.900}{\scriptsize $\pm$.010} & \textbf{.157}{\scriptsize $\pm$.016} & .165{\scriptsize $\pm$.007} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

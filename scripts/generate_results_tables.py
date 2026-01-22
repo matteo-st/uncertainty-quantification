@@ -56,6 +56,7 @@ def get_baseline_results(
     score_type: str,
     run_tag: str,
     n_seeds: int = 9,
+    metric: str = 'fpr',
 ) -> list[dict]:
     """
     Get baseline results, selecting best hyperparameters on res split per seed.
@@ -65,6 +66,7 @@ def get_baseline_results(
         score_type: 'margin' or 'odin' (for MSP)
         run_tag: Run tag for the experiment
         n_seeds: Number of seeds to aggregate
+        metric: Secondary metric to collect ('fpr' or 'aurc')
 
     Returns:
         List of dicts with dataset, model, and aggregated metrics
@@ -73,7 +75,7 @@ def get_baseline_results(
 
     for dataset, model, model_name in CONFIGS:
         roc_aucs = []
-        fprs = []
+        secondary_metrics = []
 
         for seed in range(1, n_seeds + 1):
             csv_path = (
@@ -90,7 +92,7 @@ def get_baseline_results(
             # Select best hyperparameters on res split (minimize FPR@95)
             best_idx = df['fpr_res'].idxmin()
             roc_aucs.append(df.loc[best_idx, 'roc_auc_test'])
-            fprs.append(df.loc[best_idx, 'fpr_test'])
+            secondary_metrics.append(df.loc[best_idx, f'{metric}_test'])
 
         if roc_aucs:
             results.append({
@@ -98,8 +100,8 @@ def get_baseline_results(
                 'model': model_name,
                 'roc_auc_mean': np.mean(roc_aucs),
                 'roc_auc_std': np.std(roc_aucs),
-                'fpr_mean': np.mean(fprs),
-                'fpr_std': np.std(fprs),
+                'secondary_mean': np.mean(secondary_metrics),
+                'secondary_std': np.std(secondary_metrics),
                 'n_seeds': len(roc_aucs),
             })
 
@@ -112,6 +114,7 @@ def get_partition_results(
     n_seeds: int = 9,
     alpha: float = 0.05,
     score: str = 'upper',
+    metric: str = 'fpr',
 ) -> list[dict]:
     """
     Get partition (Uniform Mass) results with Rice Rule K selection.
@@ -122,6 +125,7 @@ def get_partition_results(
         n_seeds: Number of seeds to aggregate
         alpha: Confidence level for binning
         score: Score type ('mean' or 'upper')
+        metric: Secondary metric to collect ('fpr' or 'aurc')
 
     Returns:
         List of dicts with dataset, model, and aggregated metrics
@@ -131,7 +135,7 @@ def get_partition_results(
     for dataset, model, model_name in CONFIGS:
         rice_k = RICE_K[dataset]
         roc_aucs = []
-        fprs = []
+        secondary_metrics = []
 
         for seed in range(1, n_seeds + 1):
             csv_path = (
@@ -160,7 +164,7 @@ def get_partition_results(
 
             row = filtered.iloc[0]
             roc_aucs.append(row['roc_auc_test'])
-            fprs.append(row['fpr_test'])
+            secondary_metrics.append(row[f'{metric}_test'])
 
         if roc_aucs:
             results.append({
@@ -168,8 +172,8 @@ def get_partition_results(
                 'model': model_name,
                 'roc_auc_mean': np.mean(roc_aucs),
                 'roc_auc_std': np.std(roc_aucs),
-                'fpr_mean': np.mean(fprs),
-                'fpr_std': np.std(fprs),
+                'secondary_mean': np.mean(secondary_metrics),
+                'secondary_std': np.std(secondary_metrics),
                 'n_seeds': len(roc_aucs),
             })
 
@@ -197,10 +201,20 @@ def format_metric(mean: float, std: float, bold: bool = False) -> str:
     return f"{val}{{\\scriptsize $\\pm${std_str}}}"
 
 
+# Metric display names and directions (True = higher is better)
+METRIC_INFO = {
+    'fpr': {'name': 'FPR@95', 'higher_better': False},
+    'aurc': {'name': 'AURC', 'higher_better': False},
+    'roc_auc': {'name': 'ROC-AUC', 'higher_better': True},
+    'accuracy': {'name': 'Accuracy', 'higher_better': True},
+}
+
+
 def generate_latex_table(
     score_name: str,
     baseline_results: list[dict],
     partition_results: list[dict],
+    metric: str = 'fpr',
 ) -> str:
     """
     Generate LaTeX table comparing baseline vs partition results.
@@ -209,6 +223,7 @@ def generate_latex_table(
         score_name: Name of the score (e.g., 'Margin', 'MSP')
         baseline_results: List of baseline result dicts
         partition_results: List of partition result dicts
+        metric: Secondary metric name ('fpr', 'aurc', etc.)
 
     Returns:
         LaTeX table as string
@@ -218,18 +233,23 @@ def generate_latex_table(
         (r['dataset'], r['model']): r for r in partition_results
     }
 
+    # Get metric display info
+    metric_info = METRIC_INFO.get(metric, {'name': metric.upper(), 'higher_better': False})
+    metric_name = metric_info['name']
+    metric_arrow = '$\\uparrow$' if metric_info['higher_better'] else '$\\downarrow$'
+
     lines = [
-        f"% {score_name} vs Uniform Mass binning (Rice's rule). Mean ± std over 9 seeds.",
+        f"% {score_name} vs Uniform Mass binning (Stone's rule). Mean ± std over 9 seeds.",
         "\\begin{table}[t]",
         "\\centering",
-        f"\\caption{{{score_name} vs.\\ Uniform Mass binning (Rice's rule). "
+        f"\\caption{{{score_name} vs.\\ Uniform Mass binning (Stone's rule). "
         "Mean $\\pm$ std over 9 seeds.}",
         f"\\label{{tab:{score_name.lower()}_vs_uniform_mass}}",
         "\\resizebox{\\columnwidth}{!}{%",
         "\\begin{tabular}{@{}llcccc@{}}",
         "\\toprule",
-        "& & \\multicolumn{2}{c}{\\textbf{ROC-AUC} $\\uparrow$} "
-        "& \\multicolumn{2}{c}{\\textbf{FPR@95} $\\downarrow$} \\\\",
+        f"& & \\multicolumn{{2}}{{c}}{{\\textbf{{ROC-AUC}} $\\uparrow$}} "
+        f"& \\multicolumn{{2}}{{c}}{{\\textbf{{{metric_name}}} {metric_arrow}}} \\\\",
         "\\cmidrule(lr){3-4} \\cmidrule(lr){5-6}",
         f"\\textbf{{Dataset}} & \\textbf{{Model}} & {score_name} & UM "
         f"& {score_name} & UM \\\\",
@@ -244,19 +264,104 @@ def generate_latex_table(
         if p is None:
             # No partition result available
             roc_b = format_metric(b['roc_auc_mean'], b['roc_auc_std'], bold=True)
-            fpr_b = format_metric(b['fpr_mean'], b['fpr_std'], bold=True)
-            lines.append(f"{ds} & {model} & {roc_b} & -- & {fpr_b} & -- \\\\")
+            sec_b = format_metric(b['secondary_mean'], b['secondary_std'], bold=True)
+            lines.append(f"{ds} & {model} & {roc_b} & -- & {sec_b} & -- \\\\")
         else:
             # Compare and bold the better result
             roc_b_better = b['roc_auc_mean'] > p['roc_auc_mean']
-            fpr_b_better = b['fpr_mean'] < p['fpr_mean']
+            if metric_info['higher_better']:
+                sec_b_better = b['secondary_mean'] > p['secondary_mean']
+            else:
+                sec_b_better = b['secondary_mean'] < p['secondary_mean']
 
             roc_b = format_metric(b['roc_auc_mean'], b['roc_auc_std'], bold=roc_b_better)
             roc_p = format_metric(p['roc_auc_mean'], p['roc_auc_std'], bold=not roc_b_better)
-            fpr_b = format_metric(b['fpr_mean'], b['fpr_std'], bold=fpr_b_better)
-            fpr_p = format_metric(p['fpr_mean'], p['fpr_std'], bold=not fpr_b_better)
+            sec_b = format_metric(b['secondary_mean'], b['secondary_std'], bold=sec_b_better)
+            sec_p = format_metric(p['secondary_mean'], p['secondary_std'], bold=not sec_b_better)
 
-            lines.append(f"{ds} & {model} & {roc_b} & {roc_p} & {fpr_b} & {fpr_p} \\\\")
+            lines.append(f"{ds} & {model} & {roc_b} & {roc_p} & {sec_b} & {sec_p} \\\\")
+
+    lines.extend([
+        "\\bottomrule",
+        "\\end{tabular}%",
+        "}",
+        "\\end{table}",
+    ])
+
+    return '\n'.join(lines)
+
+
+def generate_combined_latex_table(
+    score_results: dict[str, tuple[list[dict], list[dict]]],
+    metric: str = 'fpr',
+) -> str:
+    """
+    Generate a combined LaTeX table with multiple scores stacked.
+
+    Args:
+        score_results: Dict mapping score name to (baseline_results, partition_results)
+        metric: Secondary metric name ('fpr', 'aurc', etc.)
+
+    Returns:
+        LaTeX table as string
+    """
+    # Get metric display info
+    metric_info = METRIC_INFO.get(metric, {'name': metric.upper(), 'higher_better': False})
+    metric_name = metric_info['name']
+    metric_arrow = '$\\uparrow$' if metric_info['higher_better'] else '$\\downarrow$'
+
+    lines = [
+        f"% Combined results table (Stone's rule). Mean ± std over 9 seeds.",
+        "\\begin{table}[t]",
+        "\\centering",
+        "\\caption{Comparison of uncertainty scores vs.\\ Uniform Mass binning (Stone's rule). "
+        "Mean $\\pm$ std over 9 seeds.}",
+        "\\label{tab:combined_results}",
+        "\\resizebox{\\columnwidth}{!}{%",
+        "\\begin{tabular}{@{}llcccc@{}}",
+        "\\toprule",
+        f"& & \\multicolumn{{2}}{{c}}{{\\textbf{{ROC-AUC}} $\\uparrow$}} "
+        f"& \\multicolumn{{2}}{{c}}{{\\textbf{{{metric_name}}} {metric_arrow}}} \\\\",
+        "\\cmidrule(lr){3-4} \\cmidrule(lr){5-6}",
+    ]
+
+    for score_idx, (score_name, (baseline_results, partition_results)) in enumerate(score_results.items()):
+        # Create lookup for partition results
+        partition_lookup = {
+            (r['dataset'], r['model']): r for r in partition_results
+        }
+
+        # Add score section header
+        lines.append(f"\\textbf{{Dataset}} & \\textbf{{Model}} & {score_name} & UM & {score_name} & UM \\\\")
+        lines.append("\\midrule")
+
+        for b in baseline_results:
+            ds = DATASET_NAMES[b['dataset']]
+            model = b['model']
+            p = partition_lookup.get((b['dataset'], b['model']))
+
+            if p is None:
+                roc_b = format_metric(b['roc_auc_mean'], b['roc_auc_std'], bold=True)
+                sec_b = format_metric(b['secondary_mean'], b['secondary_std'], bold=True)
+                lines.append(f"{ds} & {model} & {roc_b} & -- & {sec_b} & -- \\\\")
+            else:
+                # Compare and bold the better result
+                roc_b_better = b['roc_auc_mean'] > p['roc_auc_mean']
+                if metric_info['higher_better']:
+                    sec_b_better = b['secondary_mean'] > p['secondary_mean']
+                else:
+                    sec_b_better = b['secondary_mean'] < p['secondary_mean']
+
+                roc_b = format_metric(b['roc_auc_mean'], b['roc_auc_std'], bold=roc_b_better)
+                roc_p = format_metric(p['roc_auc_mean'], p['roc_auc_std'], bold=not roc_b_better)
+                sec_b = format_metric(b['secondary_mean'], b['secondary_std'], bold=sec_b_better)
+                sec_p = format_metric(p['secondary_mean'], p['secondary_std'], bold=not sec_b_better)
+
+                lines.append(f"{ds} & {model} & {roc_b} & {roc_p} & {sec_b} & {sec_p} \\\\")
+
+        # Add separator between score sections (but not after the last one)
+        if score_idx < len(score_results) - 1:
+            lines.append("\\midrule")
 
     lines.extend([
         "\\bottomrule",
@@ -393,6 +498,18 @@ def main():
         choices=['margin', 'msp', 'doctor'],
         help='Which score tables to generate (default: all)',
     )
+    parser.add_argument(
+        '--metric',
+        type=str,
+        default='fpr',
+        choices=['fpr', 'aurc', 'accuracy'],
+        help='Secondary metric to report (default: fpr)',
+    )
+    parser.add_argument(
+        '--combined',
+        action='store_true',
+        help='Generate a combined table with all scores stacked (for 2-column papers)',
+    )
     args = parser.parse_args()
 
     # Ensure output directory exists
@@ -410,17 +527,18 @@ def main():
     margin_baseline, margin_partition = None, None
     if 'margin' in args.scores:
         print("=" * 60)
-        print("Generating Margin table...")
+        print(f"Generating Margin table (metric: {args.metric})...")
         print("=" * 60)
 
         margin_baseline = get_baseline_results(
-            args.results_dir, 'margin', args.margin_baseline_tag, args.n_seeds
+            args.results_dir, 'margin', args.margin_baseline_tag, args.n_seeds,
+            metric=args.metric,
         )
         margin_partition = get_partition_results(
             args.results_dir, args.margin_partition_tag, args.n_seeds,
-            alpha=args.alpha, score=args.score,
+            alpha=args.alpha, score=args.score, metric=args.metric,
         )
-        margin_table = generate_latex_table('Margin', margin_baseline, margin_partition)
+        margin_table = generate_latex_table('Margin', margin_baseline, margin_partition, metric=args.metric)
 
         # Save with parameters
         margin_tag = f"margin_vs_um{args.tag_suffix}" if args.tag_suffix else "margin_vs_um"
@@ -448,18 +566,19 @@ def main():
     msp_baseline, msp_partition = None, None
     if 'msp' in args.scores:
         print("\n" + "=" * 60)
-        print("Generating MSP table...")
+        print(f"Generating MSP table (metric: {args.metric})...")
         print("=" * 60)
 
         # Note: MSP uses 'odin' as the postprocessor name in baselines
         msp_baseline = get_baseline_results(
-            args.results_dir, 'odin', args.msp_baseline_tag, args.n_seeds
+            args.results_dir, 'odin', args.msp_baseline_tag, args.n_seeds,
+            metric=args.metric,
         )
         msp_partition = get_partition_results(
             args.results_dir, args.msp_partition_tag, args.n_seeds,
-            alpha=args.alpha, score=args.score,
+            alpha=args.alpha, score=args.score, metric=args.metric,
         )
-        msp_table = generate_latex_table('MSP', msp_baseline, msp_partition)
+        msp_table = generate_latex_table('MSP', msp_baseline, msp_partition, metric=args.metric)
 
         # Save with parameters
         msp_tag = f"msp_vs_um{args.tag_suffix}" if args.tag_suffix else "msp_vs_um"
@@ -487,17 +606,18 @@ def main():
     doctor_baseline, doctor_partition = None, None
     if 'doctor' in args.scores:
         print("\n" + "=" * 60)
-        print("Generating Doctor table...")
+        print(f"Generating Doctor table (metric: {args.metric})...")
         print("=" * 60)
 
         doctor_baseline = get_baseline_results(
-            args.results_dir, 'doctor', args.doctor_baseline_tag, args.n_seeds
+            args.results_dir, 'doctor', args.doctor_baseline_tag, args.n_seeds,
+            metric=args.metric,
         )
         doctor_partition = get_partition_results(
             args.results_dir, args.doctor_partition_tag, args.n_seeds,
-            alpha=args.alpha, score=args.score,
+            alpha=args.alpha, score=args.score, metric=args.metric,
         )
-        doctor_table = generate_latex_table('Doctor', doctor_baseline, doctor_partition)
+        doctor_table = generate_latex_table('Doctor', doctor_baseline, doctor_partition, metric=args.metric)
 
         # Save with parameters
         doctor_tag = f"doctor_vs_um{args.tag_suffix}" if args.tag_suffix else "doctor_vs_um"
@@ -520,6 +640,41 @@ def main():
         print(f"  - table.tex")
         print(f"  - params.yml")
         print("\n" + doctor_table)
+
+    # Generate combined table if requested
+    if args.combined:
+        print("\n" + "=" * 60)
+        print(f"Generating combined table (metric: {args.metric})...")
+        print("=" * 60)
+
+        # Collect results for all requested scores
+        score_results = {}
+        if margin_baseline and margin_partition:
+            score_results['Margin'] = (margin_baseline, margin_partition)
+        if msp_baseline and msp_partition:
+            score_results['MSP'] = (msp_baseline, msp_partition)
+        if doctor_baseline and doctor_partition:
+            score_results['Doctor'] = (doctor_baseline, doctor_partition)
+
+        if score_results:
+            combined_table = generate_combined_latex_table(score_results, metric=args.metric)
+
+            # Save combined table
+            combined_tag = f"combined_vs_um{args.tag_suffix}" if args.tag_suffix else "combined_vs_um"
+            combined_params = {
+                'scores': list(score_results.keys()),
+                'metric': args.metric,
+                'partition': partition_params,
+                'n_seeds': args.n_seeds,
+                'results_dir': str(args.results_dir),
+            }
+            combined_dir = save_table_with_params(args.output_dir, combined_tag, combined_table, combined_params)
+            print(f"\nSaved to: {combined_dir}/")
+            print(f"  - table.tex")
+            print(f"  - params.yml")
+            print("\n" + combined_table)
+        else:
+            print("  [WARN] No results available to combine")
 
     # Print data availability summary
     print("\n" + "=" * 60)
