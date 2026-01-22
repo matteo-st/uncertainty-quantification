@@ -184,10 +184,21 @@ def plot_heatmap(
 
     # Annotate cells with error rate and counts
     if show_counts and n_bins <= 15:
+        # Compute minimum cell size threshold (as fraction of axis range)
+        x_range = x_edges[-1] - x_edges[0]
+        y_range = y_edges[-1] - y_edges[0]
+        min_cell_frac = 0.06  # Skip annotation if cell is < 6% of axis range
+
         for i in range(n_bins_x):
             for j in range(n_bins_y):
                 count = int(counts[i, j])
                 if count >= min_samples and not np.isnan(error_rate[i, j]):
+                    # Check if cell is large enough for annotation
+                    cell_width = (x_edges[i + 1] - x_edges[i]) / x_range
+                    cell_height = (y_edges[j + 1] - y_edges[j]) / y_range
+                    if cell_width < min_cell_frac or cell_height < min_cell_frac:
+                        continue  # Skip annotation for small cells
+
                     err = error_rate[i, j]
                     # Place text at cell center
                     x_center = (x_edges[i] + x_edges[i + 1]) / 2
