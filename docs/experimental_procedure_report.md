@@ -2161,3 +2161,127 @@ This result, combined with Section 12 (2D/3D score combinations), strongly sugge
 - **Single-score Doctor with Uniform Mass binning is optimal**
 - More complex supervised or multi-dimensional methods do not help
 - The Doctor score already captures the essential uncertainty information for error detection
+
+## 14. Supervised Partition - CAL Fit (ImageNet)
+
+### 14.1 Motivation
+
+In Section 13, the supervised partition was fitted on the **res split (5000 samples)** and calibration statistics were computed on the **cal split (20000 samples)**. One hypothesis for the poor performance was overfitting to the smaller res split.
+
+This section tests whether fitting the partition on a larger dataset improves results by fitting directly on the **cal split (20000 samples)**.
+
+### 14.2 Experiment Setup
+
+- **Dataset:** ImageNet (n_res=5000, n_cal=20000, n_test=25000)
+- **Models:** ViT-Ti/16, ViT-B/16
+- **Score spaces:**
+  - 1D: Gini (Doctor score)
+  - 2D: Gini + Margin
+- **Partition fitted on:** cal split (20000 samples) ← **KEY DIFFERENCE from Section 13**
+- **Seeds:** 1-9
+- **Run tags:**
+  - `supervised-partition-gini-cal-fit-20260122`
+  - `supervised-partition-gini-margin-cal-fit-20260122`
+
+### 14.3 Results
+
+#### 14.3.1 Supervised Partition - 1D (Gini/Doctor) - CAL Fit
+
+##### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.5751 ± 0.0174 | 0.8579 ± 0.0014 | 0.4749 ± 0.0053 |
+| mean | 20 | 0.5077 ± 0.0041 | 0.8645 ± 0.0015 | 0.4792 ± 0.0038 |
+| mean | 30 | 0.4746 ± 0.0259 | 0.8654 ± 0.0013 | 0.4791 ± 0.0032 |
+| mean | 50 | 0.4622 ± 0.0127 | 0.8659 ± 0.0012 | 0.4803 ± 0.0030 |
+| upper | 10 | 0.5751 ± 0.0174 | 0.8579 ± 0.0014 | 0.4749 ± 0.0053 |
+| upper | 20 | 0.5077 ± 0.0041 | 0.8643 ± 0.0015 | 0.4792 ± 0.0038 |
+| upper | 30 | 0.4795 ± 0.0285 | 0.8652 ± 0.0016 | 0.4790 ± 0.0032 |
+| upper | 50 | 0.4622 ± 0.0127 | 0.8656 ± 0.0016 | 0.4802 ± 0.0031 |
+
+##### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4453 ± 0.0037 | 0.8663 ± 0.0021 | 0.3830 ± 0.0029 |
+| mean | 20 | 0.4621 ± 0.0568 | 0.8730 ± 0.0022 | 0.3866 ± 0.0033 |
+| mean | 30 | 0.4448 ± 0.0311 | 0.8739 ± 0.0024 | 0.3869 ± 0.0033 |
+| mean | 50 | 0.4342 ± 0.0151 | 0.8742 ± 0.0024 | 0.3880 ± 0.0033 |
+| upper | 10 | 0.4453 ± 0.0037 | 0.8663 ± 0.0021 | 0.3830 ± 0.0029 |
+| upper | 20 | 0.4621 ± 0.0568 | 0.8728 ± 0.0025 | 0.3866 ± 0.0033 |
+| upper | 30 | 0.4427 ± 0.0279 | 0.8734 ± 0.0022 | 0.3868 ± 0.0032 |
+| upper | 50 | 0.4399 ± 0.0190 | 0.8736 ± 0.0025 | 0.3879 ± 0.0033 |
+
+#### 14.3.2 Supervised Partition - 2D (Gini + Margin) - CAL Fit
+
+##### ViT-Ti/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.5796 ± 0.0046 | 0.8591 ± 0.0017 | 0.4769 ± 0.0031 |
+| mean | 20 | 0.5053 ± 0.0047 | 0.8652 ± 0.0017 | 0.4799 ± 0.0034 |
+| mean | 30 | 0.4758 ± 0.0274 | 0.8662 ± 0.0016 | 0.4796 ± 0.0035 |
+| mean | 50 | 0.4689 ± 0.0132 | 0.8667 ± 0.0013 | 0.4813 ± 0.0031 |
+| upper | 10 | 0.5796 ± 0.0046 | 0.8591 ± 0.0017 | 0.4769 ± 0.0031 |
+| upper | 20 | 0.5053 ± 0.0047 | 0.8650 ± 0.0019 | 0.4798 ± 0.0034 |
+| upper | 30 | 0.4758 ± 0.0274 | 0.8659 ± 0.0018 | 0.4795 ± 0.0035 |
+| upper | 50 | 0.4718 ± 0.0190 | 0.8663 ± 0.0016 | 0.4812 ± 0.0031 |
+
+##### ViT-B/16
+
+| score | K | FPR (test) | ROC-AUC (test) | AURC (test) |
+|-------|---|------------|----------------|-------------|
+| mean | 10 | 0.4452 ± 0.0036 | 0.8662 ± 0.0023 | 0.3833 ± 0.0023 |
+| mean | 20 | 0.4868 ± 0.0588 | 0.8730 ± 0.0025 | 0.3870 ± 0.0029 |
+| mean | 30 | 0.4578 ± 0.0319 | 0.8739 ± 0.0023 | 0.3868 ± 0.0025 |
+| mean | 50 | 0.4430 ± 0.0130 | 0.8742 ± 0.0022 | 0.3882 ± 0.0027 |
+| upper | 10 | 0.4452 ± 0.0036 | 0.8662 ± 0.0023 | 0.3833 ± 0.0023 |
+| upper | 20 | 0.4868 ± 0.0588 | 0.8728 ± 0.0025 | 0.3869 ± 0.0029 |
+| upper | 30 | 0.4557 ± 0.0298 | 0.8734 ± 0.0025 | 0.3867 ± 0.0025 |
+| upper | 50 | 0.4476 ± 0.0154 | 0.8735 ± 0.0023 | 0.3881 ± 0.0027 |
+
+### 14.4 Comparison: RES Fit vs CAL Fit vs Uniform Mass
+
+| Model | Method | Fit Split | K | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|-------|--------|-----------|---|---------------|----------------|-------------|
+| ViT-Ti/16 | Uniform Mass | - | 30 | 0.4749 ± 0.0110 | 0.8649 ± 0.0030 | 0.4794 ± 0.0041 |
+| ViT-Ti/16 | Supervised 1D | res (5k) | 30 | 0.4795 ± 0.0325 | 0.8653 ± 0.0014 | 0.4794 ± 0.0034 |
+| ViT-Ti/16 | Supervised 1D | **cal (20k)** | 30 | 0.4746 ± 0.0259 | 0.8654 ± 0.0013 | 0.4791 ± 0.0032 |
+| ViT-Ti/16 | Supervised 2D | res (5k) | 30 | 0.4915 ± 0.0352 | 0.8648 ± 0.0018 | 0.4793 ± 0.0042 |
+| ViT-Ti/16 | Supervised 2D | **cal (20k)** | 30 | 0.4758 ± 0.0274 | 0.8662 ± 0.0016 | 0.4796 ± 0.0035 |
+| ViT-B/16 | Uniform Mass | - | 30 | 0.4466 ± 0.0155 | 0.8739 ± 0.0023 | 0.3873 ± 0.0025 |
+| ViT-B/16 | Supervised 1D | res (5k) | 30 | 0.4501 ± 0.0242 | 0.8735 ± 0.0022 | 0.3861 ± 0.0033 |
+| ViT-B/16 | Supervised 1D | **cal (20k)** | 30 | 0.4448 ± 0.0311 | 0.8739 ± 0.0024 | 0.3869 ± 0.0033 |
+| ViT-B/16 | Supervised 2D | res (5k) | 30 | 0.4618 ± 0.0382 | 0.8693 ± 0.0049 | 0.3864 ± 0.0047 |
+| ViT-B/16 | Supervised 2D | **cal (20k)** | 30 | 0.4578 ± 0.0319 | 0.8739 ± 0.0023 | 0.3868 ± 0.0025 |
+
+### 14.5 Observations
+
+1. **CAL fit slightly improves over RES fit:**
+   - ViT-Ti/16 1D: 0.4746 (CAL) vs 0.4795 (RES) → -1.0% FPR improvement
+   - ViT-Ti/16 2D: 0.4758 (CAL) vs 0.4915 (RES) → -3.2% FPR improvement
+   - ViT-B/16 1D: 0.4448 (CAL) vs 0.4501 (RES) → -1.2% FPR improvement
+   - ViT-B/16 2D: 0.4578 (CAL) vs 0.4618 (RES) → -0.9% FPR improvement
+
+2. **Still does NOT beat Uniform Mass:**
+   - ViT-Ti/16: Supervised 1D CAL (0.4746) ≈ Uniform Mass (0.4749)
+   - ViT-B/16: Supervised 1D CAL (0.4448) ≈ Uniform Mass (0.4466)
+   - Differences are within noise margin
+
+3. **Variance still higher than Uniform Mass:**
+   - Uniform Mass: std ≈ 0.011-0.016
+   - Supervised CAL fit: std ≈ 0.026-0.032
+   - More data doesn't significantly reduce variance
+
+4. **2D still worse than 1D:**
+   - Consistent with all previous experiments
+   - Adding Margin dimension provides no benefit
+
+### 14.6 Conclusion
+
+**Fitting on a larger CAL split (20k samples) provides marginal improvement over RES fit (5k samples), but still does not outperform simple Uniform Mass binning.**
+
+The hypothesis that supervised partition was overfitting to the smaller res split is partially supported (CAL fit is slightly better), but the fundamental issue remains: the Doctor score already provides sufficient error separation, and supervised partitioning cannot improve upon simple quantile-based binning.
+
+**Recommendation:** Use Uniform Mass binning with Doctor score. No benefit from supervised partitioning methods.
