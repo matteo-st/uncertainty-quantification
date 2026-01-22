@@ -123,6 +123,7 @@ def plot_heatmap(
     figsize: tuple = (10, 8),
     show_counts: bool = True,
     min_samples: int = 5,
+    use_uniform_bins: bool = True,
 ):
     """
     Create 2D heatmap of error rates.
@@ -139,17 +140,25 @@ def plot_heatmap(
         figsize: Figure size
         show_counts: Whether to annotate cells with sample counts
         min_samples: Minimum samples in a cell to show error rate
+        use_uniform_bins: Use uniform bins (True) or quantile bins (False)
     """
-    # Create bin edges using quantiles for more uniform distribution
-    x_edges = np.percentile(score_x, np.linspace(0, 100, n_bins + 1))
-    y_edges = np.percentile(score_y, np.linspace(0, 100, n_bins + 1))
+    if use_uniform_bins:
+        # Create uniform bin edges for equal-sized cells
+        x_edges = np.linspace(score_x.min(), score_x.max(), n_bins + 1)
+        y_edges = np.linspace(score_y.min(), score_y.max(), n_bins + 1)
+    else:
+        # Create bin edges using quantiles for more uniform sample distribution
+        x_edges = np.percentile(score_x, np.linspace(0, 100, n_bins + 1))
+        y_edges = np.percentile(score_y, np.linspace(0, 100, n_bins + 1))
+        # Make edges strictly increasing
+        x_edges = np.unique(x_edges)
+        y_edges = np.unique(y_edges)
 
-    # Make edges strictly increasing
-    x_edges = np.unique(x_edges)
-    y_edges = np.unique(y_edges)
+    n_bins_x = len(x_edges) - 1
+    n_bins_y = len(y_edges) - 1
 
     # Compute 2D histogram of errors and counts
-    error_sum, x_edges, y_edges = np.histogram2d(
+    error_sum, _, _ = np.histogram2d(
         score_x, score_y, bins=[x_edges, y_edges], weights=errors
     )
     counts, _, _ = np.histogram2d(score_x, score_y, bins=[x_edges, y_edges])
@@ -166,32 +175,32 @@ def plot_heatmap(
     cmap = LinearSegmentedColormap.from_list('error_cmap', colors)
     cmap.set_bad(color='lightgray')  # For NaN values
 
-    # Plot heatmap
-    im = ax.imshow(
-        error_rate.T,
-        origin='lower',
-        aspect='auto',
-        cmap=cmap,
-        vmin=0,
-        vmax=1,
-        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
-    )
+    # Plot heatmap using pcolormesh for proper cell alignment
+    X, Y = np.meshgrid(x_edges, y_edges)
+    im = ax.pcolormesh(X, Y, error_rate.T, cmap=cmap, vmin=0, vmax=1, shading='flat')
 
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax, label='Empirical Error Rate', shrink=0.8)
 
-    # Annotate cells with counts if requested
+    # Annotate cells with error rate and counts
     if show_counts and n_bins <= 15:
-        x_centers = (x_edges[:-1] + x_edges[1:]) / 2
-        y_centers = (y_edges[:-1] + y_edges[1:]) / 2
-        for i, x in enumerate(x_centers):
-            for j, y in enumerate(y_centers):
+        for i in range(n_bins_x):
+            for j in range(n_bins_y):
                 count = int(counts[i, j])
-                if count >= min_samples:
+                if count >= min_samples and not np.isnan(error_rate[i, j]):
                     err = error_rate[i, j]
+                    # Place text at cell center
+                    x_center = (x_edges[i] + x_edges[i + 1]) / 2
+                    y_center = (y_edges[j] + y_edges[j + 1]) / 2
+                    # Choose text color based on background
                     text_color = 'white' if err > 0.5 else 'black'
-                    ax.text(x, y, f'{err:.2f}\n({count})',
-                            ha='center', va='center', fontsize=7, color=text_color)
+                    # Format: error rate on first line, count on second line (smaller)
+                    ax.text(x_center, y_center, f'{err:.0%}',
+                            ha='center', va='bottom', fontsize=8, fontweight='bold',
+                            color=text_color)
+                    ax.text(x_center, y_center, f'n={count}',
+                            ha='center', va='top', fontsize=6,
+                            color=text_color, alpha=0.8)
 
     # Labels and title
     ax.set_xlabel(SCORE_DISPLAY_NAMES.get(score_x_name, score_x_name), fontsize=12)
@@ -202,7 +211,7 @@ def plot_heatmap(
     total_samples = len(errors)
     total_errors = errors.sum()
     overall_error_rate = total_errors / total_samples
-    stats_text = f'N={total_samples:,}, Error Rate={overall_error_rate:.3f}'
+    stats_text = f'N={total_samples:,}, Error Rate={overall_error_rate:.1%}'
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
@@ -227,6 +236,7 @@ def main():
     parser.add_argument('--output-dir', type=Path, default=Path('docs/figures/heatmaps'))
     parser.add_argument('--min-samples', type=int, default=5, help='Min samples per cell to show')
     parser.add_argument('--no-counts', action='store_true', help='Do not show sample counts')
+    parser.add_argument('--quantile-bins', action='store_true', help='Use quantile bins instead of uniform bins')
     args = parser.parse_args()
 
     print(f"Loading logits for {args.dataset}/{args.model}...")
@@ -287,6 +297,7 @@ def main():
         output_path=output_path,
         show_counts=not args.no_counts,
         min_samples=args.min_samples,
+        use_uniform_bins=not args.quantile_bins,
     )
 
     # Print correlation info
