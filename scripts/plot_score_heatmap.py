@@ -176,29 +176,27 @@ def plot_heatmap(
     cmap.set_bad(color='lightgray')  # For NaN values
 
     # Plot heatmap using pcolormesh for proper cell alignment
-    X, Y = np.meshgrid(x_edges, y_edges)
-    im = ax.pcolormesh(X, Y, error_rate.T, cmap=cmap, vmin=0, vmax=1, shading='flat')
+    if use_uniform_bins:
+        # Use actual score values on axes
+        X, Y = np.meshgrid(x_edges, y_edges)
+        im = ax.pcolormesh(X, Y, error_rate.T, cmap=cmap, vmin=0, vmax=1, shading='flat')
+    else:
+        # For quantile bins: use bin indices on axes for regular grid
+        X, Y = np.meshgrid(np.arange(n_bins_x + 1), np.arange(n_bins_y + 1))
+        im = ax.pcolormesh(X, Y, error_rate.T, cmap=cmap, vmin=0, vmax=1, shading='flat')
+        # Update edges to bin indices for annotation positioning
+        x_edges = np.arange(n_bins_x + 1)
+        y_edges = np.arange(n_bins_y + 1)
 
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax, label='Empirical Error Rate', shrink=0.8)
 
     # Annotate cells with error rate and counts
     if show_counts and n_bins <= 15:
-        # Compute minimum cell size threshold (as fraction of axis range)
-        x_range = x_edges[-1] - x_edges[0]
-        y_range = y_edges[-1] - y_edges[0]
-        min_cell_frac = 0.06  # Skip annotation if cell is < 6% of axis range
-
         for i in range(n_bins_x):
             for j in range(n_bins_y):
                 count = int(counts[i, j])
                 if count >= min_samples and not np.isnan(error_rate[i, j]):
-                    # Check if cell is large enough for annotation
-                    cell_width = (x_edges[i + 1] - x_edges[i]) / x_range
-                    cell_height = (y_edges[j + 1] - y_edges[j]) / y_range
-                    if cell_width < min_cell_frac or cell_height < min_cell_frac:
-                        continue  # Skip annotation for small cells
-
                     err = error_rate[i, j]
                     # Place text at cell center
                     x_center = (x_edges[i] + x_edges[i + 1]) / 2
@@ -214,8 +212,13 @@ def plot_heatmap(
                             color=text_color, alpha=0.8)
 
     # Labels and title
-    ax.set_xlabel(SCORE_DISPLAY_NAMES.get(score_x_name, score_x_name), fontsize=12)
-    ax.set_ylabel(SCORE_DISPLAY_NAMES.get(score_y_name, score_y_name), fontsize=12)
+    x_label = SCORE_DISPLAY_NAMES.get(score_x_name, score_x_name)
+    y_label = SCORE_DISPLAY_NAMES.get(score_y_name, score_y_name)
+    if not use_uniform_bins:
+        x_label += ' (quantile bin)'
+        y_label += ' (quantile bin)'
+    ax.set_xlabel(x_label, fontsize=12)
+    ax.set_ylabel(y_label, fontsize=12)
     ax.set_title(title, fontsize=14)
 
     # Add statistics text
