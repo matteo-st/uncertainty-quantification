@@ -30,31 +30,26 @@ postprocessor_args:
   use_batchnorm: true
 
   # Training
-  num_epochs: 20
+  num_epochs: 50
   batch_size: 256
   lr: 0.001
   weight_decay: 0.0001
   positive_class_weight: 4.0
 
-  # Validation / Early stopping (disabled - external CV provides val split)
+  # Early stopping using res split (val_split=0 since we use external val data)
   val_split: 0.0
-  patience: 0
+  patience: 10
   early_stopping_metric: fpr
 
-# Experience args
+# Experience args - load res for validation, train on cal, evaluate on test
 experience_args:
-  n_folds: 5
+  n_folds: 1
   n_epochs:
-    res: null
+    res: 1
     cal: 1
   transform:
-    res: null
+    res: test
     cal: test
 
-# Grid search (reduced for faster iteration)
-postprocessor_grid:
-  hidden_dims:
-    - [32]
-    - [64, 32]
-  dropout: [0.2]
-  lr: [0.001]
+# No grid search - single hyperparameter combination
+# postprocessor_grid: {}

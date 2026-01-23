@@ -302,30 +302,36 @@ class MLPPostprocessor(BaseScikitPostprocessor):
         else:
             raise ValueError(f"Unknown early stopping metric: {self.early_stopping_metric}")
 
-    def fit(self, logits=None, detector_labels=None, verbose: bool = False):
+    def fit(self, logits=None, detector_labels=None, val_logits=None, val_detector_labels=None, verbose: bool = False):
         if logits is None or detector_labels is None:
             raise ValueError("Both logits and detector_labels must be provided to fit the MLP postprocessor.")
 
         detector_labels = detector_labels.detach().to(torch.device("cpu"))
 
-        # Split into train/val for early stopping
-        n = len(logits)
-        n_val = int(n * self.val_split)
-
-        if n_val > 0 and self.patience > 0:
-            # Shuffle indices and split
+        # Check if external validation data is provided (e.g., res split)
+        if val_logits is not None and val_detector_labels is not None:
+            # Use external validation data for early stopping
+            train_embs = self._extract_embeddings(logits=logits, fit=True).to(torch.device("cpu"))
+            train_labels = detector_labels
+            val_embs = self._extract_embeddings(logits=val_logits, fit=False).to(torch.device("cpu"))
+            val_labels = val_detector_labels.detach().to(torch.device("cpu"))
+            use_early_stopping = self.patience > 0
+        elif self.val_split > 0 and self.patience > 0:
+            # Split train data into train/val for early stopping
+            n = len(logits)
+            n_val = int(n * self.val_split)
             perm = torch.randperm(n)
             val_idx, train_idx = perm[:n_val], perm[n_val:]
 
             train_logits = logits[train_idx]
             train_labels = detector_labels[train_idx]
-            val_logits = logits[val_idx]
+            val_logits_split = logits[val_idx]
             val_labels = detector_labels[val_idx]
 
             # Extract train embeddings with fit=True to store normalization stats
             train_embs = self._extract_embeddings(logits=train_logits, fit=True).to(torch.device("cpu"))
             # Extract val embeddings using the stored stats
-            val_embs = self._extract_embeddings(logits=val_logits, fit=False).to(torch.device("cpu"))
+            val_embs = self._extract_embeddings(logits=val_logits_split, fit=False).to(torch.device("cpu"))
 
             use_early_stopping = True
         else:

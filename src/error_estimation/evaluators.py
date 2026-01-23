@@ -548,15 +548,22 @@ class EvaluatorAblation:
                     dataloader=self.cal_loader,
                     fit_clustering=True
                 )
-            
+
                 # self.fit_clustering()
         elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic", "isotonic_splitting", "uniform_mass"]:
-            self.detector.fit(
-                logits=self.values["cal"]["logits"].to(self.detector.device),
-                detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),
-            )
+            # For MLP, pass res data as validation set for early stopping if available
+            fit_kwargs = {
+                "logits": self.values["cal"]["logits"].to(self.detector.device),
+                "detector_labels": self.values["cal"]["detector_labels"].to(self.detector.device),
+            }
+            if self.postprocessor_name == "mlp" and self.values.get("res") is not None:
+                res_vals = self.values["res"]
+                if res_vals.get("logits") is not None and len(res_vals.get("detector_labels", [])) > 0:
+                    fit_kwargs["val_logits"] = res_vals["logits"].to(self.detector.device)
+                    fit_kwargs["val_detector_labels"] = res_vals["detector_labels"].to(self.detector.device)
+            self.detector.fit(**fit_kwargs)
         elif self.postprocessor_name == "conformal":
-            
+
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 targets=self.values["cal"]["targets"].to(self.detector.device),
@@ -566,7 +573,7 @@ class EvaluatorAblation:
             if self.verbose:
                 print('No fitting required for this method')
 
-        
+
         self.cal_results = self.evaluator_cal.evaluate(self.hyperparam_combination, self.detectors)
         self.cal_results = pd.concat(self.cal_results, axis=0)
 
@@ -1442,13 +1449,26 @@ class HyperparamsSearch(EvaluatorAblation):
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
             elif self.postprocessor_name in ["random_forest", "scikit", "mlp", "isotonic_splitting"]:
-                if self.verbose:
-                    print("Performing hyperparameter search with cross-validation")
-                t0 = time.time()
-                self.search_cross_validation()
-                t1 = time.time()
-                if self.verbose:
-                    print(f"Total time: {t1 - t0:.2f} seconds")
+                # Check if grid search is needed (more than 1 config)
+                grid = self.cfg_detection.get("postprocessor_grid", {})
+                n_configs = len(list(make_grid(self.cfg_detection, key="postprocessor_grid"))) if grid else 1
+
+                if n_configs > 1:
+                    if self.verbose:
+                        print(f"Performing hyperparameter search with cross-validation ({n_configs} configs)")
+                    t0 = time.time()
+                    self.search_cross_validation()
+                    t1 = time.time()
+                    if self.verbose:
+                        print(f"Total time: {t1 - t0:.2f} seconds")
+                else:
+                    if self.verbose:
+                        print("Single config - fitting on cal, evaluating on res/test (no CV)")
+                    t0 = time.time()
+                    self.fit_on_cal_evaluate_test()
+                    t1 = time.time()
+                    if self.verbose:
+                        print(f"Total time: {t1 - t0:.2f} seconds")
             elif self.postprocessor_name == "uniform_mass":
                 if self.verbose:
                     print("Performing hyperparameter search: fit all on cal, eval on test")
@@ -1505,12 +1525,19 @@ class HyperparamsSearch(EvaluatorAblation):
         if self.postprocessor_name in ["partition", "clustering"]:
             self.fit_clustering()
         elif self.postprocessor_name in ["relu", "random_forest", "scikit", "mlp", "isotonic", "isotonic_splitting", "uniform_mass"]:
-            self.detector.fit(
-                logits=self.values["cal"]["logits"].to(self.detector.device),
-                detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device),
-            )
+            # For MLP, pass res data as validation set for early stopping if available
+            fit_kwargs = {
+                "logits": self.values["cal"]["logits"].to(self.detector.device),
+                "detector_labels": self.values["cal"]["detector_labels"].to(self.detector.device),
+            }
+            if self.postprocessor_name == "mlp" and self.values.get("res") is not None:
+                res_vals = self.values["res"]
+                if res_vals.get("logits") is not None and len(res_vals.get("detector_labels", [])) > 0:
+                    fit_kwargs["val_logits"] = res_vals["logits"].to(self.detector.device)
+                    fit_kwargs["val_detector_labels"] = res_vals["detector_labels"].to(self.detector.device)
+            self.detector.fit(**fit_kwargs)
         elif self.postprocessor_name == "conformal":
-            
+
             self.detector.fit(
                 logits=self.values["cal"]["logits"].to(self.detector.device),
                 targets=self.values["cal"]["targets"].to(self.detector.device),
@@ -1520,7 +1547,7 @@ class HyperparamsSearch(EvaluatorAblation):
             if self.verbose:
                 print('No fitting required for this method')
 
-        
+
         self.cal_results = self.evaluator_cal.evaluate([self.config], [self.detector])[0]
 
 
