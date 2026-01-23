@@ -782,11 +782,19 @@ class HyperparamsSearch(EvaluatorAblation):
         Used when there's no grid search (single hyperparameter combination).
         Fits on full cal set, then evaluates on res (if available) and test.
         """
+        # Get single config from make_grid (with empty postprocessor_grid, yields 1 config)
+        configs = list(make_grid(self.cfg_detection, key="postprocessor_grid"))
+        if len(configs) == 0:
+            # Fallback: use postprocessor_args directly
+            cfg = self.cfg_detection.get("postprocessor_args", {})
+        else:
+            cfg = configs[0]
+
         # Create single detector with current config
         self.detector = get_postprocessor(
             postprocessor_name=self.postprocessor_name,
             model=self.model,
-            cfg=self.cfg_detection,
+            cfg=cfg,
             result_folder=self.result_folder,
             device=self.device
         )
@@ -848,12 +856,12 @@ class HyperparamsSearch(EvaluatorAblation):
 
         # Combine config and results
         self.best_result = pd.concat([
-            pd.DataFrame([self.cfg_detection.get("postprocessor_args", {})]),
+            pd.DataFrame([cfg]),
             pd.DataFrame([results])
         ], axis=1)
-        self.config = self.cfg_detection
+        self.config = cfg
 
-        print(f"Config: {self.cfg_detection.get('postprocessor_args', {})}")
+        print(f"Config: {cfg}")
         if "fpr_test" in results:
             print(f"Test FPR@95: {results['fpr_test']:.4f}, ROC-AUC: {results['roc_auc_test']:.4f}")
 
