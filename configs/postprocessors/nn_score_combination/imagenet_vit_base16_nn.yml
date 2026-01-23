@@ -52,4 +52,4 @@ experience_args:
     cal: test
 
 # No grid search - single hyperparameter combination
-# postprocessor_grid: {}
+postprocessor_grid: {}
