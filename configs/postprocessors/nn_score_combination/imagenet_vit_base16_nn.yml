@@ -30,20 +30,20 @@ postprocessor_args:
   use_batchnorm: true
 
   # Training
-  num_epochs: 100
+  num_epochs: 20
   batch_size: 256
   lr: 0.001
   weight_decay: 0.0001
   positive_class_weight: 4.0
 
-  # Validation / Early stopping
-  val_split: 0.2
-  patience: 10
+  # Validation / Early stopping (disabled - external CV provides val split)
+  val_split: 0.0
+  patience: 0
   early_stopping_metric: fpr
 
-# Experience args (match existing MLP config)
+# Experience args
 experience_args:
-  n_folds: 5
+  n_folds: 3
   n_epochs:
     res: null
     cal: 1
@@ -51,11 +51,10 @@ experience_args:
     res: null
     cal: test
 
-# Grid search (small for initial experiment)
+# Grid search (reduced for faster iteration)
 postprocessor_grid:
   hidden_dims:
     - [32]
     - [64, 32]
-    - [128, 64]
-  dropout: [0.1, 0.2, 0.3]
-  lr: [0.001, 0.0005]
+  dropout: [0.2]
+  lr: [0.001]
