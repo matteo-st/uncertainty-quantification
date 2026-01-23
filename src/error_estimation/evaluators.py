@@ -860,6 +860,7 @@ class HyperparamsSearch(EvaluatorAblation):
             pd.DataFrame([results])
         ], axis=1)
         self.config = cfg
+        self.results = self.best_result  # Required by run_detection.py
 
         print(f"Config: {cfg}")
         if "fpr_test" in results:
