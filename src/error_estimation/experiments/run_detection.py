@@ -189,7 +189,8 @@ def _apply_raw_score_selection(
     source_name = selection_cfg.get("postprocessor", "doctor")
     n_res = data_cfg.get("n_samples", {}).get("res")
     source_root = selection_cfg.get("root_dir", root_dir)
-    source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name})
+    source_family = selection_cfg.get("family")
+    source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name}, family=source_family)
     runs_root = source_results_root / "runs"
     run_tag = _resolve_raw_score_run_tag(
         runs_root=runs_root,
@@ -272,7 +273,8 @@ def _apply_lda_score_selections(
         try:
             source_name = selection_cfg.get("postprocessor", "doctor")
             source_root = selection_cfg.get("root_dir", root_dir)
-            source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name})
+            source_family = selection_cfg.get("family")
+            source_results_root = build_results_root(source_root, data_cfg, model_cfg, {"name": source_name}, family=source_family)
             runs_root = source_results_root / "runs"
 
             run_tag = _resolve_raw_score_run_tag(

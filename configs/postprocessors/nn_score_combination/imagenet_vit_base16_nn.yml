@@ -42,16 +42,19 @@ experience_args:
   score_selections:
     gini:
       postprocessor: doctor
+      family: baselines
       metric: fpr
       split: res
       run_tag: doctor-grid-20260120
     margin:
       postprocessor: margin
+      family: baselines
       metric: fpr
       split: res
       run_tag: margin-grid-20260120
     msp:
       postprocessor: msp
+      family: baselines
       metric: fpr
       split: res
       run_tag: msp-grid-20260120
