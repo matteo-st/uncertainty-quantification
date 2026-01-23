@@ -1566,6 +1566,8 @@ class HyperparamsSearch(EvaluatorAblation):
                     t1 = time.time()
                     if self.verbose:
                         print(f"Total time: {t1 - t0:.2f} seconds")
+                    # fit_on_cal_evaluate_test saves all results internally, return early
+                    return
             elif self.postprocessor_name == "uniform_mass":
                 if self.verbose:
                     print("Performing hyperparameter search: fit all on cal, eval on test")
