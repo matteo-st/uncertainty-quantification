@@ -775,6 +775,95 @@ class HyperparamsSearch(EvaluatorAblation):
                 results=hyperparam_results,
             )
 
+    def fit_on_cal_evaluate_test(self):
+        """
+        Fit single config on cal and evaluate on res/test.
+
+        Used when there's no grid search (single hyperparameter combination).
+        Fits on full cal set, then evaluates on res (if available) and test.
+        """
+        # Create single detector with current config
+        self.detector = get_postprocessor(
+            postprocessor_name=self.postprocessor_name,
+            model=self.model,
+            cfg=self.cfg_detection,
+            result_folder=self.result_folder,
+            device=self.device
+        )
+
+        # Fit on full cal set
+        self.detector.fit(
+            logits=self.values["cal"]["logits"].to(self.detector.device),
+            detector_labels=self.values["cal"]["detector_labels"].to(self.detector.device)
+        )
+
+        results = {}
+
+        # Evaluate on res (if available)
+        if self.values.get("res") is not None and len(self.values["res"].get("logits", [])) > 0:
+            res_conf = self.detector(logits=self.values["res"]["logits"])
+            res_metrics = compute_all_metrics(
+                conf=res_conf.cpu().numpy(),
+                detector_labels=self.values["res"]["detector_labels"].cpu().numpy(),
+            )
+            results["fpr_res"] = res_metrics["fpr"]
+            results["tpr_res"] = res_metrics["tpr"]
+            results["thr_res"] = res_metrics["thr"]
+            results["roc_auc_res"] = res_metrics["roc_auc"]
+            results["model_acc_res"] = res_metrics["accuracy"]
+            results["aurc_res"] = res_metrics["aurc"]
+            results["aupr_err_res"] = res_metrics["aupr_in"]
+            results["aupr_success_res"] = res_metrics["aupr_out"]
+
+        # Evaluate on cal
+        cal_conf = self.detector(logits=self.values["cal"]["logits"])
+        cal_metrics = compute_all_metrics(
+            conf=cal_conf.cpu().numpy(),
+            detector_labels=self.values["cal"]["detector_labels"].cpu().numpy(),
+        )
+        results["fpr_cal"] = cal_metrics["fpr"]
+        results["tpr_cal"] = cal_metrics["tpr"]
+        results["thr_cal"] = cal_metrics["thr"]
+        results["roc_auc_cal"] = cal_metrics["roc_auc"]
+        results["model_acc_cal"] = cal_metrics["accuracy"]
+        results["aurc_cal"] = cal_metrics["aurc"]
+        results["aupr_err_cal"] = cal_metrics["aupr_in"]
+        results["aupr_success_cal"] = cal_metrics["aupr_out"]
+
+        # Evaluate on test (if available)
+        if self.values.get("test") is not None and len(self.values["test"].get("logits", [])) > 0:
+            test_conf = self.detector(logits=self.values["test"]["logits"])
+            test_metrics = compute_all_metrics(
+                conf=test_conf.cpu().numpy(),
+                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+            )
+            results["fpr_test"] = test_metrics["fpr"]
+            results["tpr_test"] = test_metrics["tpr"]
+            results["thr_test"] = test_metrics["thr"]
+            results["roc_auc_test"] = test_metrics["roc_auc"]
+            results["model_acc_test"] = test_metrics["accuracy"]
+            results["aurc_test"] = test_metrics["aurc"]
+            results["aupr_err_test"] = test_metrics["aupr_in"]
+            results["aupr_success_test"] = test_metrics["aupr_out"]
+
+        # Combine config and results
+        self.best_result = pd.concat([
+            pd.DataFrame([self.cfg_detection.get("postprocessor_args", {})]),
+            pd.DataFrame([results])
+        ], axis=1)
+        self.config = self.cfg_detection
+
+        print(f"Config: {self.cfg_detection.get('postprocessor_args', {})}")
+        if "fpr_test" in results:
+            print(f"Test FPR@95: {results['fpr_test']:.4f}, ROC-AUC: {results['roc_auc_test']:.4f}")
+
+        # Save results
+        if self.save_search_results:
+            self.save_results(
+                result_file=os.path.join(self.result_folder, "search.jsonl"),
+                results=self.best_result,
+            )
+
     def search_fit_all(self):
         """
         Fit on cal and evaluate on both cal and test for ALL hyperparameter combinations.
