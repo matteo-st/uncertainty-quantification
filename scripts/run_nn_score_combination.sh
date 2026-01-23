@@ -4,6 +4,9 @@
 
 set -e
 
+# GPU selection (default: GPU 1)
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1}"
+
 # Default values
 RUN_TAG="nn-score-combination-$(date +%Y%m%d)"
 NO_MLFLOW="--no-mlflow"
@@ -30,6 +33,7 @@ done
 echo "=========================================="
 echo "NN Score Combination Experiment"
 echo "=========================================="
+echo "GPU: ${CUDA_VISIBLE_DEVICES}"
 echo "Run tag: ${RUN_TAG}"
 echo "MLflow: $([ -z "$NO_MLFLOW" ] && echo 'enabled' || echo 'disabled')"
 echo ""
