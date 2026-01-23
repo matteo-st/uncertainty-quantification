@@ -6,24 +6,12 @@ postprocessor_args:
   reorder_embs: false
   temperature: 1.0
 
-  # Which scores to combine
-  base_scores: [gini, margin, msp, entropy]
+  # Which scores to combine (3 scores - entropy removed)
+  base_scores: [gini, margin, msp]
   normalize_combined: true
-  score_configs:
-    gini:
-      temperature: 1.0
-      normalize: false
-    margin:
-      temperature: 1.0
-      normalize: false
-    msp:
-      temperature: 1.0
-      normalize: false
-    entropy:
-      temperature: 1.0
-      normalize: false
+  # score_configs will be populated by score_selections (per-seed optimal hyperparameters)
 
-  # NN architecture (input=4 scores)
+  # NN architecture (input=3 scores)
   hidden_dims: [64, 32]
   activation: relu
   dropout: 0.2
@@ -50,6 +38,23 @@ experience_args:
   transform:
     res: test
     cal: test
+  # Per-seed optimal hyperparameters from grid search runs
+  score_selections:
+    gini:
+      postprocessor: doctor
+      metric: fpr
+      split: res
+      run_tag: doctor-grid-20260120
+    margin:
+      postprocessor: margin
+      metric: fpr
+      split: res
+      run_tag: margin-grid-20260120
+    msp:
+      postprocessor: msp
+      metric: fpr
+      split: res
+      run_tag: msp-grid-20260120
 
 # No grid search - single hyperparameter combination
 postprocessor_grid: {}
