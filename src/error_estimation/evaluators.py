@@ -838,18 +838,37 @@ class HyperparamsSearch(EvaluatorAblation):
         results["aupr_err_cal"] = cal_metrics["aupr_in"]
         results["aupr_success_cal"] = cal_metrics["aupr_out"]
 
-        # Evaluate on test using evaluator_test (test data is in val_loader, not self.values)
-        if self.evaluator_test is not None:
-            test_result_df = self.evaluator_test.evaluate([cfg], [self.detector])[0]
-            # Extract test metrics from the DataFrame
-            results["fpr_test"] = test_result_df["fpr_test"].values[0]
-            results["tpr_test"] = test_result_df["tpr_test"].values[0]
-            results["thr_test"] = test_result_df["thr_test"].values[0]
-            results["roc_auc_test"] = test_result_df["roc_auc_test"].values[0]
-            results["model_acc_test"] = test_result_df["model_acc_test"].values[0]
-            results["aurc_test"] = test_result_df["aurc_test"].values[0]
-            results["aupr_err_test"] = test_result_df["aupr_in_test"].values[0]
-            results["aupr_success_test"] = test_result_df["aupr_out_test"].values[0]
+        # Evaluate on test using val_loader directly
+        if self.val_loader is not None:
+            # Collect test logits and labels
+            test_logits_list = []
+            test_labels_list = []
+            self.model.eval()
+            with torch.no_grad():
+                for inputs, labels in self.val_loader:
+                    inputs = inputs.to(self.device)
+                    logits = self.model(inputs)
+                    test_logits_list.append(logits.cpu())
+                    test_labels_list.append(labels)
+            test_logits = torch.cat(test_logits_list, dim=0)
+            test_labels = torch.cat(test_labels_list, dim=0)
+            test_preds = test_logits.argmax(dim=1)
+            test_detector_labels = (test_preds != test_labels).numpy()
+
+            # Compute test scores
+            test_conf = self.detector(logits=test_logits)
+            test_metrics = compute_all_metrics(
+                conf=test_conf.cpu().numpy(),
+                detector_labels=test_detector_labels,
+            )
+            results["fpr_test"] = test_metrics["fpr"]
+            results["tpr_test"] = test_metrics["tpr"]
+            results["thr_test"] = test_metrics["thr"]
+            results["roc_auc_test"] = test_metrics["roc_auc"]
+            results["model_acc_test"] = test_metrics["accuracy"]
+            results["aurc_test"] = test_metrics["aurc"]
+            results["aupr_err_test"] = test_metrics["aupr_in"]
+            results["aupr_success_test"] = test_metrics["aupr_out"]
 
         # Combine config and results
         self.best_result = pd.concat([
