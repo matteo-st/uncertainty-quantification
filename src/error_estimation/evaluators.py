@@ -838,21 +838,18 @@ class HyperparamsSearch(EvaluatorAblation):
         results["aupr_err_cal"] = cal_metrics["aupr_in"]
         results["aupr_success_cal"] = cal_metrics["aupr_out"]
 
-        # Evaluate on test (if available)
-        if self.values.get("test") is not None and len(self.values["test"].get("logits", [])) > 0:
-            test_conf = self.detector(logits=self.values["test"]["logits"])
-            test_metrics = compute_all_metrics(
-                conf=test_conf.cpu().numpy(),
-                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
-            )
-            results["fpr_test"] = test_metrics["fpr"]
-            results["tpr_test"] = test_metrics["tpr"]
-            results["thr_test"] = test_metrics["thr"]
-            results["roc_auc_test"] = test_metrics["roc_auc"]
-            results["model_acc_test"] = test_metrics["accuracy"]
-            results["aurc_test"] = test_metrics["aurc"]
-            results["aupr_err_test"] = test_metrics["aupr_in"]
-            results["aupr_success_test"] = test_metrics["aupr_out"]
+        # Evaluate on test using evaluator_test (test data is in val_loader, not self.values)
+        if self.evaluator_test is not None:
+            test_result_df = self.evaluator_test.evaluate([cfg], [self.detector])[0]
+            # Extract test metrics from the DataFrame
+            results["fpr_test"] = test_result_df["fpr_test"].values[0]
+            results["tpr_test"] = test_result_df["tpr_test"].values[0]
+            results["thr_test"] = test_result_df["thr_test"].values[0]
+            results["roc_auc_test"] = test_result_df["roc_auc_test"].values[0]
+            results["model_acc_test"] = test_result_df["model_acc_test"].values[0]
+            results["aurc_test"] = test_result_df["aurc_test"].values[0]
+            results["aupr_err_test"] = test_result_df["aupr_in_test"].values[0]
+            results["aupr_success_test"] = test_result_df["aupr_out_test"].values[0]
 
         # Combine config and results
         self.best_result = pd.concat([
