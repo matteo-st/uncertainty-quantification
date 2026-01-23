@@ -1,0 +1,61 @@
+name: mlp
+
+postprocessor_args:
+  # Space: "combined" enables multi-score input
+  space: combined
+  reorder_embs: false
+  temperature: 1.0
+
+  # Which scores to combine
+  base_scores: [gini, margin, msp, entropy]
+  normalize_combined: true
+  score_configs:
+    gini:
+      temperature: 1.0
+      normalize: false
+    margin:
+      temperature: 1.0
+      normalize: false
+    msp:
+      temperature: 1.0
+      normalize: false
+    entropy:
+      temperature: 1.0
+      normalize: false
+
+  # NN architecture (input=4 scores)
+  hidden_dims: [64, 32]
+  activation: relu
+  dropout: 0.2
+  use_batchnorm: true
+
+  # Training
+  num_epochs: 100
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  positive_class_weight: 4.0
+
+  # Validation / Early stopping
+  val_split: 0.2
+  patience: 10
+  early_stopping_metric: fpr
+
+# Experience args (match existing MLP config)
+experience_args:
+  n_folds: 5
+  n_epochs:
+    res: null
+    cal: 1
+  transform:
+    res: null
+    cal: test
+
+# Grid search (small for initial experiment)
+postprocessor_grid:
+  hidden_dims:
+    - [32]
+    - [64, 32]
+    - [128, 64]
+  dropout: [0.1, 0.2, 0.3]
+  lr: [0.001, 0.0005]
