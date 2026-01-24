@@ -1,0 +1,79 @@
+name: mlp
+
+postprocessor_args:
+  # Space: "combined" enables multi-score input
+  space: combined
+  reorder_embs: false
+  temperature: 1.0
+
+  # Which scores to combine (4 scores - v1 config)
+  base_scores: [gini, margin, msp, entropy]
+  normalize_combined: true
+
+  # NN architecture defaults (overridden by grid)
+  hidden_dims: [64, 32]
+  activation: relu
+  dropout: 0.2
+  use_batchnorm: true
+
+  # Training (fixed)
+  num_epochs: 50
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  positive_class_weight: 4.0
+
+  # Early stopping using res split
+  val_split: 0.0
+  patience: 10
+  early_stopping_metric: fpr
+
+# Experience args - load res for validation, train on cal, evaluate on test
+experience_args:
+  n_folds: 1
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+  # Per-seed optimal hyperparameters from grid search runs
+  score_selections:
+    gini:
+      postprocessor: doctor
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: doctor-grid-20260120
+    margin:
+      postprocessor: margin
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: margin-grid-20260120
+    msp:
+      postprocessor: msp
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: msp-grid-20260120
+    entropy:
+      postprocessor: entropy
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: entropy-grid-20260120
+
+# Grid search: 7 architectures × 3 weights × 3 dropouts × 2 activations = 126 configs
+postprocessor_grid:
+  hidden_dims:
+    - []              # Linear model (no hidden layers)
+    - [8]             # Single tiny layer
+    - [16]            # Single small layer
+    - [32]            # Single medium layer
+    - [16, 8]         # Two tiny layers
+    - [32, 16]        # Two small layers
+    - [64, 32]        # Current baseline
+  positive_class_weight: [3.0, 4.0, 5.0]
+  dropout: [0.0, 0.2, 0.4]
+  activation: [relu, gelu]
