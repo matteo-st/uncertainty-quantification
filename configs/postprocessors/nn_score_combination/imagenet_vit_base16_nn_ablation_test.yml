@@ -1,0 +1,67 @@
+name: mlp
+
+postprocessor_args:
+  # Space: "combined" enables multi-score input
+  space: combined
+  reorder_embs: false
+  temperature: 1.0
+
+  # Which scores to combine (3 scores - matching v2 config, entropy excluded)
+  base_scores: [gini, margin, msp]
+  normalize_combined: true
+
+  # NN architecture defaults (overridden by grid)
+  hidden_dims: []
+  activation: relu
+  dropout: 0.0
+  use_batchnorm: true
+
+  # Training (fixed)
+  num_epochs: 50
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  positive_class_weight: 3.0
+
+  # Early stopping using res split
+  val_split: 0.0
+  patience: 10
+  early_stopping_metric: fpr
+
+# Experience args - load res for validation, train on cal, evaluate on test
+experience_args:
+  n_folds: 1
+  n_epochs:
+    res: 1
+    cal: 1
+  transform:
+    res: test
+    cal: test
+  # Per-seed optimal hyperparameters from grid search runs
+  score_selections:
+    gini:
+      postprocessor: doctor
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: doctor-grid-20260120
+    margin:
+      postprocessor: margin
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: margin-grid-20260120
+    msp:
+      postprocessor: msp
+      family: baselines
+      metric: fpr
+      split: res
+      run_tag: msp-grid-20260120
+
+# Minimal test grid: 1 config only (linear model)
+postprocessor_grid:
+  hidden_dims:
+    - []              # Linear model (no hidden layers)
+  positive_class_weight: [3.0]
+  dropout: [0.0]
+  activation: [relu]
