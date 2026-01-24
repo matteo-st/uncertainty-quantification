@@ -46,13 +46,14 @@ cd "$(dirname "$0")/.."
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run the ablation experiment (uses HyperparamsSearch for grid iteration with fitting)
+# Run the ablation experiment (uses search_mlp_fit_all for grid iteration with fitting)
 error-estimation run \
     --config-dataset configs/datasets/imagenet/imagenet_n_res-5000_n-cal-20000.yml \
     --config-model configs/models/imagenet_timm-vit-base16.yml \
     --config-detection configs/postprocessors/nn_score_combination/imagenet_vit_base16_nn_ablation.yml \
     --results-family "${RESULTS_FAMILY}" \
     --save-search-results \
+    --seed-splits 1 2 3 4 5 \
     ${NO_MLFLOW} \
     --run-tag "${RUN_TAG}"
 

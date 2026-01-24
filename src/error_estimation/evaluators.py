@@ -976,6 +976,129 @@ class HyperparamsSearch(EvaluatorAblation):
             results=hyperparam_results,
         )
 
+    def search_mlp_fit_all(self):
+        """
+        Fit MLP on cal (with res as validation for early stopping) and evaluate on res/cal/test.
+
+        Unlike search_cross_validation, this does NOT do CV - it fits on full cal set
+        and uses res split only for early stopping. Reports metrics for all configs.
+        """
+        self.hyperparam_combination = list(make_grid(self.cfg_detection, key="postprocessor_grid"))
+
+        self.detectors = [get_postprocessor(
+            postprocessor_name=self.postprocessor_name,
+            model=self.model,
+            cfg=cfg,
+            result_folder=self.result_folder,
+            device=self.device
+        ) for cfg in self.hyperparam_combination]
+
+        list_results = []
+
+        # Get res values for validation (if available)
+        res_vals = self.values.get("res")
+        has_res = res_vals is not None and res_vals.get("logits") is not None
+
+        for dec_idx, dec in tqdm(enumerate(self.detectors), total=len(self.detectors),
+                                  desc="Evaluating MLP configs", disable=False):
+            # Fit on cal, with res as validation for early stopping
+            fit_kwargs = {
+                "logits": self.values["cal"]["logits"].to(dec.device),
+                "detector_labels": self.values["cal"]["detector_labels"].to(dec.device),
+            }
+            if has_res:
+                fit_kwargs["val_logits"] = res_vals["logits"].to(dec.device)
+                fit_kwargs["val_detector_labels"] = res_vals["detector_labels"].to(dec.device)
+
+            dec.fit(**fit_kwargs)
+
+            results = {}
+
+            # Evaluate on res (if available)
+            if has_res:
+                res_conf = dec(logits=res_vals["logits"])
+                res_metrics = compute_all_metrics(
+                    conf=res_conf.cpu().numpy(),
+                    detector_labels=res_vals["detector_labels"].cpu().numpy(),
+                )
+                results.update({
+                    "fpr_res": res_metrics["fpr"],
+                    "tpr_res": res_metrics["tpr"],
+                    "thr_res": res_metrics["thr"],
+                    "roc_auc_res": res_metrics["roc_auc"],
+                    "accuracy_res": res_metrics["accuracy"],
+                    "aurc_res": res_metrics["aurc"],
+                    "aupr_in_res": res_metrics["aupr_in"],
+                    "aupr_out_res": res_metrics["aupr_out"],
+                })
+
+            # Evaluate on cal
+            cal_conf = dec(logits=self.values["cal"]["logits"])
+            cal_metrics = compute_all_metrics(
+                conf=cal_conf.cpu().numpy(),
+                detector_labels=self.values["cal"]["detector_labels"].cpu().numpy(),
+            )
+            results.update({
+                "fpr_cal": cal_metrics["fpr"],
+                "tpr_cal": cal_metrics["tpr"],
+                "thr_cal": cal_metrics["thr"],
+                "roc_auc_cal": cal_metrics["roc_auc"],
+                "accuracy_cal": cal_metrics["accuracy"],
+                "aurc_cal": cal_metrics["aurc"],
+                "aupr_in_cal": cal_metrics["aupr_in"],
+                "aupr_out_cal": cal_metrics["aupr_out"],
+            })
+
+            # Evaluate on test
+            test_conf = dec(logits=self.values["test"]["logits"])
+            test_metrics = compute_all_metrics(
+                conf=test_conf.cpu().numpy(),
+                detector_labels=self.values["test"]["detector_labels"].cpu().numpy(),
+            )
+            results.update({
+                "fpr_test": test_metrics["fpr"],
+                "tpr_test": test_metrics["tpr"],
+                "thr_test": test_metrics["thr"],
+                "roc_auc_test": test_metrics["roc_auc"],
+                "accuracy_test": test_metrics["accuracy"],
+                "aurc_test": test_metrics["aurc"],
+                "aupr_in_test": test_metrics["aupr_in"],
+                "aupr_out_test": test_metrics["aupr_out"],
+            })
+
+            results_df = pd.concat([
+                pd.DataFrame([self.hyperparam_combination[dec_idx]]),
+                pd.DataFrame([results])
+            ], axis=1)
+            list_results.append(results_df)
+
+        hyperparam_results = pd.concat(list_results, axis=0)
+
+        # Select best based on res metric (validation set) if available
+        metric_col = f"{self.metric}_res" if has_res else f"{self.metric}_cal"
+        scores = [res[metric_col].values[0] for res in list_results]
+        self.best_idx = select_best_index(scores, self.metric_direction)
+        self.config = self.hyperparam_combination[self.best_idx]
+        self.best_result = list_results[self.best_idx]
+        self.detector = self.detectors[self.best_idx]
+
+        print(f"Best Config (by {metric_col}): {self.config}")
+        if has_res:
+            print(f"Res {self.metric}: {self.best_result[f'{self.metric}_res'].values}")
+        print(f"Cal {self.metric}: {self.best_result[f'{self.metric}_cal'].values}")
+        print(f"Test {self.metric}: {self.best_result[f'{self.metric}_test'].values}")
+
+        # Save all results for analysis
+        self.save_results(
+            result_file=os.path.join(self.result_folder, "search.jsonl"),
+            results=hyperparam_results,
+        )
+
+        # Also save as CSV for easy viewing
+        csv_path = os.path.join(self.result_folder, "grid_results.csv")
+        hyperparam_results.to_csv(csv_path, index=False)
+        print(f"Saved grid results to {csv_path}")
+
     def search_lda_binning(self):
         """
         Search for LDA binning postprocessor.
@@ -1562,7 +1685,7 @@ class HyperparamsSearch(EvaluatorAblation):
                 t1 = time.time()
                 if self.verbose:
                     print(f"Total time: {t1 - t0:.2f} seconds")
-            elif self.postprocessor_name in ["random_forest", "scikit", "mlp", "isotonic_splitting"]:
+            elif self.postprocessor_name in ["random_forest", "scikit", "isotonic_splitting"]:
                 # Check if grid search is needed (more than 1 config)
                 grid = self.cfg_detection.get("postprocessor_grid", {})
                 n_configs = len(list(make_grid(self.cfg_detection, key="postprocessor_grid"))) if grid else 1
@@ -1578,6 +1701,31 @@ class HyperparamsSearch(EvaluatorAblation):
                 else:
                     if self.verbose:
                         print("Single config - fitting on cal, evaluating on res/test (no CV)")
+                    t0 = time.time()
+                    self.fit_on_cal_evaluate_test()
+                    t1 = time.time()
+                    if self.verbose:
+                        print(f"Total time: {t1 - t0:.2f} seconds")
+                    # fit_on_cal_evaluate_test saves all results internally, return early
+                    return
+            elif self.postprocessor_name == "mlp":
+                # MLP grid search: fit on cal, use res for early stopping, no CV
+                grid = self.cfg_detection.get("postprocessor_grid", {})
+                n_configs = len(list(make_grid(self.cfg_detection, key="postprocessor_grid"))) if grid else 1
+
+                if n_configs > 1:
+                    if self.verbose:
+                        print(f"Performing MLP grid search without CV ({n_configs} configs)")
+                    t0 = time.time()
+                    self.search_mlp_fit_all()
+                    t1 = time.time()
+                    if self.verbose:
+                        print(f"Total time: {t1 - t0:.2f} seconds")
+                    # search_mlp_fit_all saves all results internally, return early
+                    return
+                else:
+                    if self.verbose:
+                        print("Single MLP config - fitting on cal, evaluating on res/test")
                     t0 = time.time()
                     self.fit_on_cal_evaluate_test()
                     t1 = time.time()
