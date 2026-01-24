@@ -6,8 +6,8 @@ postprocessor_args:
   reorder_embs: false
   temperature: 1.0
 
-  # Which scores to combine (4 scores - v1 config)
-  base_scores: [gini, margin, msp, entropy]
+  # Which scores to combine (3 scores - matching v2 config, entropy excluded)
+  base_scores: [gini, margin, msp]
   normalize_combined: true
 
   # NN architecture defaults (overridden by grid)
@@ -57,12 +57,6 @@ experience_args:
       metric: fpr
       split: res
       run_tag: msp-grid-20260120
-    entropy:
-      postprocessor: entropy
-      family: baselines
-      metric: fpr
-      split: res
-      run_tag: entropy-grid-20260120
 
 # Grid search: 7 architectures × 3 weights × 3 dropouts × 2 activations = 126 configs
 postprocessor_grid:

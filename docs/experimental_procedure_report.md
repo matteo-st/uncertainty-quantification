@@ -2567,3 +2567,180 @@ python scripts/analysis/extract_optbinning_results.py
 ```
 
 Data source: `results/partition_binning/imagenet/*/partition/runs/`
+
+---
+
+## 16. Neural Network Score Combination (MLP)
+
+### 16.1 Overview
+
+This experiment evaluates a **neural network (MLP) approach** to combining multiple uncertainty scores for error detection. Unlike linear methods (LDA) or binning approaches, the MLP can learn non-linear score combinations.
+
+### 16.2 Experimental Setup
+
+**Dataset:** ImageNet
+- n_cal = 20,000 (training data)
+- n_res = 5,000 (validation for early stopping)
+- n_test = 25,000 (held-out evaluation)
+- 9 seed splits
+
+**Model:** ViT-Base16 (timm_vit_base16_ce)
+
+**Input Features:** 4 normalized uncertainty scores
+- Gini (Doctor)
+- Margin (1 - confidence gap)
+- MSP (negative max softmax probability)
+- Entropy
+
+**MLP Architecture:**
+- Input: 4 features (normalized to [0,1])
+- Hidden layers: [64, 32] with ReLU, BatchNorm, Dropout(0.2)
+- Output: 1 (sigmoid for error probability)
+- Loss: BCEWithLogitsLoss with positive_class_weight=4.0
+
+**Training:**
+- Epochs: 50 (with early stopping, patience=10)
+- Batch size: 256
+- Learning rate: 0.001
+- Weight decay: 0.0001
+- Validation: res split (5,000 samples) for early stopping on FPR@95
+
+### 16.3 Results
+
+| Seed | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|------|---------------|----------------|-------------|
+| 1 | 0.4110 | 0.8778 | 0.3918 |
+| 2 | 0.4146 | 0.8796 | 0.3921 |
+| 3 | 0.4196 | 0.8780 | 0.3902 |
+| 4 | 0.4188 | 0.8775 | 0.3936 |
+| 5 | 0.4362 | 0.8725 | 0.3825 |
+| 6 | 0.4307 | 0.8740 | 0.3930 |
+| 7 | 0.4255 | 0.8781 | 0.3939 |
+| 8 | 0.4319 | 0.8746 | 0.3933 |
+| 9 | 0.4194 | 0.8770 | 0.3910 |
+| **Mean ± Std** | **0.4231 ± 0.0080** | **0.8766 ± 0.0022** | **0.3913 ± 0.0033** |
+
+### 16.4 Comparison with Other Methods
+
+| Method | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|--------|---------------|----------------|-------------|
+| UniformMass (gini) | 0.4330 ± 0.0093 | 0.8742 ± 0.0024 | 0.3821 ± 0.0022 |
+| OptBinning 1D-gini | 0.4627 ± 0.0409 | 0.8729 ± 0.0024 | 0.3770 ± 0.0080 |
+| OptBinning 2D-auto | 0.4475 ± 0.0286 | 0.8732 ± 0.0022 | 0.3761 ± 0.0047 |
+| **MLP Score Combination** | **0.4231 ± 0.0080** | **0.8766 ± 0.0022** | 0.3913 ± 0.0033 |
+
+### 16.5 Observations
+
+1. **Best FPR@95 performance:** MLP achieves FPR@95 = 0.4231, which is **2.3% better** than UniformMass (0.4330) and **5.2% better** than OptBinning 2D-auto (0.4475).
+
+2. **Best ROC-AUC:** MLP achieves ROC-AUC = 0.8766, slightly better than UniformMass (0.8742) and OptBinning (0.8729-0.8732).
+
+3. **AURC trade-off:** MLP has higher (worse) AURC (0.3913) compared to UniformMass (0.3821). This suggests the MLP optimizes for threshold-based metrics (FPR@95) at the expense of area-based metrics (AURC).
+
+4. **Lower variance:** MLP std = 0.0080 is lower than UniformMass (0.0093) and significantly lower than OptBinning methods (0.0286-0.0409).
+
+5. **Non-linear combination helps:** The MLP's ability to learn non-linear combinations of scores provides benefit over linear methods (LDA) and binning approaches.
+
+### 16.6 Key Insights
+
+**Why MLP outperforms on FPR@95:**
+- The MLP is trained with BCELoss using positive_class_weight=4.0, which emphasizes correctly classifying errors
+- Early stopping on FPR@95 directly optimizes for this metric
+- Non-linear combination can capture complex relationships between scores that linear methods miss
+
+**Why AURC is worse:**
+- The MLP's training objective (weighted BCE) focuses on classification accuracy rather than ranking quality
+- AURC measures the area under the risk-coverage curve, which requires good ranking across all thresholds
+- Optimizing for a single threshold (FPR@95) can degrade overall ranking performance
+
+### 16.7 Conclusion
+
+**Neural network score combination achieves the best FPR@95 (0.4231) and ROC-AUC (0.8766) on ImageNet ViT-Base16**, outperforming all binning methods. However, this comes at a cost:
+
+1. **AURC trade-off:** Higher AURC (0.3913 vs 0.3821) indicates worse selective prediction performance
+2. **No statistical guarantees:** Unlike binning methods, MLP outputs are not calibrated probabilities with confidence bounds
+3. **More complexity:** Requires neural network training, hyperparameter tuning, and more compute
+
+**Recommendation:** For applications where FPR@95 is the primary metric, MLP score combination is the best choice. For applications requiring calibrated confidence bounds or selective prediction (AURC-focused), UniformMass binning remains preferred.
+
+### 16.8 Run Tag
+
+- `nn-score-combination-20260123`
+
+### 16.9 Reproducibility
+
+```bash
+# Run experiment
+./scripts/run_nn_score_combination.sh
+
+# Results location
+results/score_combination/imagenet/timm_vit_base16_ce/mlp/runs/nn-score-combination-20260123/
+```
+
+### 16.10 NN Score Combination v2: Optimized Hyperparameters
+
+This follow-up experiment tests whether using **per-seed optimal hyperparameters** and **removing entropy** improves MLP score combination performance.
+
+#### Changes from v1
+
+| Aspect | v1 | v2 |
+|--------|-----|-----|
+| Base scores | gini, margin, msp, entropy (4) | gini, margin, msp (3) |
+| Score hyperparameters | Fixed T=1.0 for all | Per-seed optimal from grid search |
+| NN input dimension | 4 | 3 |
+
+#### v2 Results (Test Split)
+
+| Seed | FPR@95 | ROC-AUC | AURC |
+|------|--------|---------|------|
+| 1 | 0.4236 | 0.8753 | 0.3899 |
+| 2 | 0.4176 | 0.8791 | 0.3916 |
+| 3 | 0.4270 | 0.8773 | 0.3899 |
+| 4 | 0.4202 | 0.8771 | 0.3940 |
+| 5 | 0.4418 | 0.8722 | 0.3829 |
+| 6 | 0.4294 | 0.8736 | 0.3924 |
+| 7 | 0.4266 | 0.8767 | 0.3928 |
+| 8 | 0.4354 | 0.8739 | 0.3923 |
+| 9 | 0.4196 | 0.8759 | 0.3901 |
+| **Mean ± Std** | **0.4268 ± 0.0074** | **0.8757 ± 0.0020** | **0.3906 ± 0.0031** |
+
+#### Comparison: v1 vs v2 vs Baselines
+
+| Method | FPR@95 (test) | ROC-AUC (test) | AURC (test) |
+|--------|---------------|----------------|-------------|
+| Doctor (gini, optimal T) | 0.4256 ± 0.0085 | 0.8750 ± 0.0025 | - |
+| Margin (optimal T) | 0.4226 ± 0.0093 | 0.8742 ± 0.0031 | - |
+| MSP (optimal T) | 0.4222 ± 0.0062 | 0.8760 ± 0.0027 | - |
+| MLP v1 (4 scores, T=1.0) | **0.4231 ± 0.0080** | **0.8766 ± 0.0022** | 0.3913 ± 0.0033 |
+| MLP v2 (3 scores, optimal T) | 0.4268 ± 0.0074 | 0.8757 ± 0.0020 | **0.3906 ± 0.0031** |
+
+#### Observations
+
+1. **v2 performs similarly to v1:** Differences are within standard deviation range
+   - FPR@95: v2 is 0.9% worse (0.4268 vs 0.4231)
+   - ROC-AUC: v2 is 0.1% worse (0.8757 vs 0.8766)
+   - AURC: v2 is 0.2% better (0.3906 vs 0.3913)
+
+2. **Removing entropy has minimal impact:** The 4th score (entropy) provided little additional information
+
+3. **Optimal hyperparameters did not help MLP:** Unlike raw scores where optimal T improves performance, the MLP with fixed T=1.0 performs equally well or better
+
+4. **MLP does not significantly improve over individual scores:** The best individual score (MSP, FPR=0.4222) is comparable to MLP v1 (FPR=0.4231)
+
+#### Conclusion
+
+Using per-seed optimal hyperparameters and removing entropy does not improve MLP performance. The simpler v1 configuration (4 scores, T=1.0) remains the recommended MLP approach. However, the overall benefit of MLP over individual scores is marginal.
+
+#### Run Tag
+
+- `nn-score-combination-v2-20260123`
+
+#### Reproducibility
+
+```bash
+# Run experiment
+./scripts/run_nn_score_combination_v2.sh
+
+# Results location
+results/score_combination/imagenet/timm_vit_base16_ce/mlp/runs/nn-score-combination-v2-20260123/
+```

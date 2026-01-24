@@ -1,5 +1,5 @@
 #!/bin/bash
-# MLP Architecture Ablation Study
+# MLP Architecture Ablation Study (3 scores: gini, margin, msp)
 # Tests 126 configurations: 7 architectures × 3 weights × 3 dropouts × 2 activations
 
 set -e
@@ -46,13 +46,13 @@ cd "$(dirname "$0")/.."
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run the ablation experiment with grid evaluation
+# Run the ablation experiment (uses HyperparamsSearch for grid iteration with fitting)
 error-estimation run \
     --config-dataset configs/datasets/imagenet/imagenet_n_res-5000_n-cal-20000.yml \
     --config-model configs/models/imagenet_timm-vit-base16.yml \
     --config-detection configs/postprocessors/nn_score_combination/imagenet_vit_base16_nn_ablation.yml \
     --results-family "${RESULTS_FAMILY}" \
-    --eval-grid \
+    --save-search-results \
     ${NO_MLFLOW} \
     --run-tag "${RUN_TAG}"
 
@@ -60,5 +60,5 @@ echo ""
 echo "=========================================="
 echo "Ablation completed!"
 echo "Results: results/${RESULTS_FAMILY}/imagenet/timm_vit_base16_ce/mlp/runs/${RUN_TAG}/"
-echo "Check grid_results.csv for all 126 configurations"
+echo "Check search.jsonl for all 126 configurations"
 echo "=========================================="
