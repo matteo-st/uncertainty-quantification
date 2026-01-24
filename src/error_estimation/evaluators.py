@@ -1099,6 +1099,9 @@ class HyperparamsSearch(EvaluatorAblation):
         hyperparam_results.to_csv(csv_path, index=False)
         print(f"Saved grid results to {csv_path}")
 
+        # Store results for run_detection.py
+        self.results = hyperparam_results
+
     def search_lda_binning(self):
         """
         Search for LDA binning postprocessor.
