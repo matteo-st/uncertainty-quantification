@@ -1632,8 +1632,8 @@ class HyperparamsSearch(EvaluatorAblation):
         self.get_values(self.cal_loader)
         # self.get_values(self.calib_loader, calib=True)
 
-        # Load test data for methods that need it (e.g., uniform_mass, lda_binning, raw_lda)
-        if self.postprocessor_name in ["uniform_mass", "lda_binning", "raw_lda"] and self.val_loader is not None:
+        # Load test data for methods that need it (e.g., uniform_mass, lda_binning, raw_lda, mlp)
+        if self.postprocessor_name in ["uniform_mass", "lda_binning", "raw_lda", "mlp"] and self.val_loader is not None:
             if self.verbose:
                 print("Collecting values on test data")
             self.get_values(self.val_loader, name="test")
