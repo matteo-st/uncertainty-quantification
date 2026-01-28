@@ -1,18 +1,33 @@
 """
-Upper Reliability Diagram for Conservative Calibration.
+Reliability Diagrams for Uncertainty Calibration.
 
-Plots per-bin:
-- X-axis: Upper bound û_b from conservative calibration (Hoeffding + Bonferroni)
-- Y-axis: Empirical error rate p̂_b on test set
-- Reference: Diagonal y=x (points should be below if calibration is conservative)
+Two modes:
+1. `calibrated` (default): Conservative calibration upper reliability diagram
+   - X-axis: Upper bound û_b from conservative calibration (Hoeffding + Bonferroni)
+   - Y-axis: Empirical error rate p̂_b on test set
+   - Reference: Diagonal y=x (points should be below if calibration is conservative)
 
-Usage:
+2. `raw-score`: Raw MSP score reliability diagram
+   - X-axis: Mean transformed MSP score per bin (predicted error probability)
+   - Y-axis: Empirical error rate per bin (actual error probability)
+   - Reference: Diagonal y=x (perfect calibration)
+   - Shows that raw MSP is miscalibrated as an error probability estimator
+
+Usage (calibrated mode):
     python scripts/analysis/upper_reliability_diagram.py \
         --run-dir results/partition_binning/imagenet/timm_vit_base16_ce/partition/runs/msp-unif-mass-sim-grid-20260120/seed-split-1 \
         --latent-dir latent/imagenet_timm_vit_base16_ce/transform-test_n-epochs-1 \
         --n-clusters 50 \
         --alpha 0.05 \
         --output-dir results/analysis/reliability_diagram/imagenet_vit_base16
+
+Usage (raw-score mode):
+    python scripts/analysis/upper_reliability_diagram.py \
+        --run-dir results/partition_binning/imagenet/timm_vit_base16_ce/partition/runs/msp-unif-mass-sim-grid-20260120/seed-split-1 \
+        --latent-dir latent/imagenet_timm_vit_base16_ce/transform-test_n-epochs-1 \
+        --n-clusters 50 \
+        --mode raw-score \
+        --output-dir results/analysis/reliability_diagram/imagenet_vit_base16_raw
 """
 from __future__ import annotations
 
@@ -161,6 +176,85 @@ def _serialize(obj):
     return obj
 
 
+def compute_msp_score(logits: torch.Tensor, temperature: float = 1.0) -> np.ndarray:
+    """
+    Compute MSP (Maximum Softmax Probability) score.
+
+    Args:
+        logits: Model logits, shape (N, C)
+        temperature: Temperature scaling (default: 1.0)
+
+    Returns:
+        MSP scores in range [-1, 0], where -1 is most confident
+    """
+    scaled_logits = logits / temperature
+    probs = torch.softmax(scaled_logits, dim=-1)
+    msp = probs.max(dim=-1).values
+    # MSP score convention: negate so higher uncertainty = higher score
+    return -msp.numpy()
+
+
+def transform_msp_to_error_prob(msp_scores: np.ndarray) -> np.ndarray:
+    """
+    Transform MSP scores from [-1, 0] to [0, 1] for interpretation as predicted error probability.
+
+    Args:
+        msp_scores: MSP scores in range [-1, 0]
+
+    Returns:
+        Transformed scores in range [0, 1] where 0=confident, 1=uncertain
+    """
+    # MSP scores are in [-1, 0], transform to [0, 1]
+    # -1 (most confident) -> 0 (low predicted error)
+    # 0 (least confident) -> 1 (high predicted error)
+    return 1.0 + msp_scores
+
+
+def uniform_mass_binning(scores: np.ndarray, n_bins: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Assign samples to bins with approximately equal mass (uniform-mass binning).
+
+    Args:
+        scores: Score values to bin
+        n_bins: Number of bins
+
+    Returns:
+        (bin_assignments, bin_edges) where bin_assignments[i] is the bin index for sample i
+    """
+    n_samples = len(scores)
+    # Sort indices by score
+    sorted_idx = np.argsort(scores)
+
+    # Compute target samples per bin
+    samples_per_bin = n_samples // n_bins
+    remainder = n_samples % n_bins
+
+    # Assign bins
+    bin_assignments = np.zeros(n_samples, dtype=int)
+    current_idx = 0
+    for b in range(n_bins):
+        # Add one extra sample to first 'remainder' bins
+        bin_size = samples_per_bin + (1 if b < remainder else 0)
+        bin_indices = sorted_idx[current_idx:current_idx + bin_size]
+        bin_assignments[bin_indices] = b
+        current_idx += bin_size
+
+    # Compute bin edges (for reference)
+    bin_edges = np.zeros(n_bins + 1)
+    bin_edges[0] = scores.min()
+    current_idx = 0
+    for b in range(n_bins):
+        bin_size = samples_per_bin + (1 if b < remainder else 0)
+        current_idx += bin_size
+        if current_idx < n_samples:
+            # Edge is midpoint between last sample in bin and first sample in next bin
+            bin_edges[b + 1] = (scores[sorted_idx[current_idx - 1]] + scores[sorted_idx[current_idx]]) / 2
+        else:
+            bin_edges[b + 1] = scores.max()
+
+    return bin_assignments, bin_edges
+
+
 def _apply_style() -> None:
     """Set publication-quality plot style."""
     plt.rcParams.update({
@@ -176,6 +270,244 @@ def _apply_style() -> None:
         "grid.alpha": 0.3,
         "font.family": "serif",
     })
+
+
+def run_raw_score_mode(args: argparse.Namespace) -> None:
+    """
+    Generate raw MSP score reliability diagram.
+
+    Shows that raw MSP score is not calibrated as an error probability estimator.
+    """
+    latent_dir = Path(args.latent_dir)
+    run_dir = Path(args.run_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else run_dir / "reliability_diagram_raw"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    _apply_style()
+
+    n_bins = args.n_clusters if args.n_clusters else 50
+
+    # Load latent file
+    latent_path = latent_dir / "full.pt"
+    if not latent_path.exists():
+        candidates = list(latent_dir.glob("*.pt"))
+        if candidates:
+            latent_path = candidates[0]
+        else:
+            raise FileNotFoundError(f"No latent .pt file found in {latent_dir}")
+
+    print(f"Loading latent from: {latent_path}")
+    latent = torch.load(latent_path, map_location="cpu")
+    logits = latent["logits"]
+    labels = latent["labels"]
+    model_preds = latent["model_preds"]
+
+    # Compute errors (full dataset)
+    errors_full = (model_preds != labels).numpy().astype(int)
+
+    # Get dataset config for split parameters
+    config_dir = run_dir / "configs"
+    if not config_dir.exists():
+        config_dir = run_dir.parent / "configs"
+    dataset_cfg = _load_yaml(config_dir / "dataset.yml") if config_dir.exists() else {}
+    n_samples = dataset_cfg.get("n_samples", {}) if dataset_cfg else {}
+
+    # Extract split parameters
+    seed_split = args.seed_split
+    if seed_split is None and run_dir.name.startswith("seed-split-"):
+        try:
+            seed_split = int(run_dir.name.split("-")[-1])
+        except ValueError:
+            seed_split = None
+
+    n_res = args.n_res if args.n_res is not None else n_samples.get("res", 0)
+    n_cal = args.n_cal if args.n_cal is not None else n_samples.get("cal", 0)
+    n_test = args.n_test if args.n_test is not None else n_samples.get("test", 0)
+
+    print(f"Split params: n_res={n_res}, n_cal={n_cal}, n_test={n_test}, seed_split={seed_split}")
+
+    # Get test subset
+    n_total = errors_full.shape[0]
+    test_idx = _build_test_indices(n_total, n_res, n_cal, n_test, seed_split)
+    errors_test = errors_full[test_idx]
+    logits_test = logits[test_idx]
+
+    print(f"Test set size: {len(errors_test)}")
+    print(f"Test error rate: {errors_test.mean():.4f}")
+
+    # Compute MSP scores (temperature=1.0, as per experiment config)
+    msp_scores = compute_msp_score(logits_test, temperature=1.0)
+
+    # Transform to [0, 1] for interpretation as predicted error probability
+    transformed_scores = transform_msp_to_error_prob(msp_scores)
+
+    print(f"MSP score range: [{msp_scores.min():.4f}, {msp_scores.max():.4f}]")
+    print(f"Transformed score range: [{transformed_scores.min():.4f}, {transformed_scores.max():.4f}]")
+
+    # Uniform-mass binning on test set
+    bin_assignments, bin_edges = uniform_mass_binning(transformed_scores, n_bins)
+
+    print(f"Number of bins: {n_bins}")
+
+    # Compute per-bin statistics
+    counts = np.bincount(bin_assignments, minlength=n_bins).astype(float)
+    score_sums = np.bincount(bin_assignments, weights=transformed_scores, minlength=n_bins)
+    error_sums = np.bincount(bin_assignments, weights=errors_test, minlength=n_bins)
+
+    # Mean score and error rate per bin
+    mean_scores = np.zeros(n_bins)
+    error_rates = np.zeros(n_bins)
+    nonempty = counts > 0
+    mean_scores[nonempty] = score_sums[nonempty] / counts[nonempty]
+    error_rates[nonempty] = error_sums[nonempty] / counts[nonempty]
+
+    # Compute Clopper-Pearson CI for each bin
+    ci_lower = np.zeros(n_bins)
+    ci_upper = np.zeros(n_bins)
+    for b in range(n_bins):
+        lo, hi = clopper_pearson_interval(
+            int(error_sums[b]),
+            int(counts[b]),
+            alpha=args.ci_alpha,
+        )
+        ci_lower[b] = lo
+        ci_upper[b] = hi
+
+    # Compute calibration error (ECE-style)
+    # For each bin: |mean_score - error_rate|
+    calibration_errors = np.abs(mean_scores - error_rates)
+    ece = np.sum((counts / counts.sum()) * calibration_errors)
+
+    # Count "violations" (where error rate > predicted score, i.e., underconfident)
+    underconfident = error_rates > mean_scores
+    overconfident = error_rates < mean_scores
+    n_underconfident = int(np.sum(underconfident & nonempty))
+    n_overconfident = int(np.sum(overconfident & nonempty))
+
+    print(f"\n=== Raw Score Calibration Statistics ===")
+    print(f"Total bins: {n_bins}")
+    print(f"Non-empty bins: {int(np.sum(nonempty))}")
+    print(f"Expected Calibration Error (ECE): {ece:.4f}")
+    print(f"Underconfident bins (error > predicted): {n_underconfident}")
+    print(f"Overconfident bins (error < predicted): {n_overconfident}")
+
+    # Create reliability diagram
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    # Only plot non-empty bins
+    mask = nonempty
+    x_plot = mean_scores[mask]
+    y_plot = error_rates[mask]
+    counts_plot = counts[mask]
+    ci_lo_plot = ci_lower[mask]
+    ci_hi_plot = ci_upper[mask]
+
+    # Diagonal reference line (perfect calibration)
+    ax.plot([0, 1], [0, 1], "k--", lw=1.5, label="y = x (perfect calibration)", zorder=1)
+
+    # Scatter points with size proportional to bin count
+    size_scale = 300 / np.max(counts_plot) if np.max(counts_plot) > 0 else 1
+    sizes = counts_plot * size_scale
+    sizes = np.clip(sizes, 20, 300)
+
+    # All points same color (blue) since this is showing miscalibration pattern
+    ax.scatter(
+        x_plot,
+        y_plot,
+        s=sizes,
+        c="tab:blue",
+        alpha=0.7,
+        edgecolors="white",
+        linewidths=0.5,
+        zorder=3,
+    )
+
+    # Error bars (Clopper-Pearson CI)
+    yerr_lo = y_plot - ci_lo_plot
+    yerr_hi = ci_hi_plot - y_plot
+    ax.errorbar(
+        x_plot,
+        y_plot,
+        yerr=[yerr_lo, yerr_hi],
+        fmt="none",
+        ecolor="gray",
+        elinewidth=0.8,
+        capsize=2,
+        alpha=0.5,
+        zorder=2,
+    )
+
+    # Labels and title
+    ax.set_xlabel(r"Mean predicted error probability $\bar{s}(b)$")
+    ax.set_ylabel(r"Empirical error rate $\hat{p}(b)$")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_aspect("equal", adjustable="box")
+
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], linestyle="--", color="k", label="Perfect calibration"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="tab:blue", markersize=8, label="Bin (raw MSP)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left", frameon=True, framealpha=0.9)
+
+    # Add annotation with calibration stats
+    stats_text = f"ECE: {ece:.3f}\nBins: {int(np.sum(nonempty))}"
+    ax.text(
+        0.98,
+        0.02,
+        stats_text,
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
+
+    fig.tight_layout()
+
+    # Save figure
+    fig.savefig(output_dir / "raw_score_reliability_diagram.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "raw_score_reliability_diagram.png", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"\nSaved figure to: {output_dir / 'raw_score_reliability_diagram.pdf'}")
+
+    # Save statistics
+    per_bin_stats = []
+    for b in range(n_bins):
+        per_bin_stats.append({
+            "bin_idx": b,
+            "mean_predicted_score": float(mean_scores[b]),
+            "empirical_error_rate": float(error_rates[b]),
+            "ci_lower": float(ci_lower[b]),
+            "ci_upper": float(ci_upper[b]),
+            "count": int(counts[b]),
+            "calibration_error": float(calibration_errors[b]),
+            "bin_edge_lower": float(bin_edges[b]),
+            "bin_edge_upper": float(bin_edges[b + 1]),
+        })
+
+    summary = {
+        "mode": "raw-score",
+        "score_type": "msp",
+        "temperature": 1.0,
+        "n_bins": n_bins,
+        "n_nonempty_bins": int(np.sum(nonempty)),
+        "ece": float(ece),
+        "n_underconfident_bins": n_underconfident,
+        "n_overconfident_bins": n_overconfident,
+        "total_test_samples": int(len(errors_test)),
+        "test_error_rate": float(errors_test.mean()),
+        "latent_path": str(latent_path),
+        "ci_alpha": args.ci_alpha,
+        "per_bin": per_bin_stats,
+    }
+
+    stats_output = output_dir / "raw_score_reliability_stats.json"
+    stats_output.write_text(json.dumps(_serialize(summary), indent=2), encoding="utf-8")
+    print(f"Saved stats to: {stats_output}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -239,11 +571,25 @@ def parse_args() -> argparse.Namespace:
         default=0.05,
         help="Significance level for Clopper-Pearson CI on test error (default: 0.05 for 95%% CI).",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["calibrated", "raw-score"],
+        default="calibrated",
+        help="Mode: 'calibrated' for conservative calibration diagram, 'raw-score' for raw MSP reliability diagram.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
+    # Dispatch based on mode
+    if args.mode == "raw-score":
+        run_raw_score_mode(args)
+        return
+
+    # --- Calibrated mode (default) ---
     run_dir = Path(args.run_dir)
     latent_dir = Path(args.latent_dir)
     output_dir = Path(args.output_dir) if args.output_dir else run_dir / "reliability_diagram"
