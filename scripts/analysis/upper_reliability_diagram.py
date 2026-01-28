@@ -208,6 +208,47 @@ def compute_msp_score(logits: torch.Tensor, temperature: float = 1.0) -> np.ndar
     return -msp.numpy()
 
 
+def compute_doctor_score(logits: torch.Tensor, temperature: float = 1.0, normalize: bool = True) -> np.ndarray:
+    """
+    Compute Doctor (Gini) score - higher = more uncertain.
+
+    Args:
+        logits: Model logits, shape (N, C)
+        temperature: Temperature scaling (default: 1.0)
+        normalize: If True, use normalized Gini (1-g)/g, else use 1-g
+
+    Returns:
+        Doctor scores where higher values indicate more uncertainty
+    """
+    scaled_logits = logits / temperature
+    probs = torch.softmax(scaled_logits, dim=-1)
+    g = torch.sum(probs ** 2, dim=-1)
+    if normalize:
+        gini = (1.0 - g) / g
+    else:
+        gini = 1.0 - g
+    return gini.numpy()
+
+
+def compute_margin_score(logits: torch.Tensor, temperature: float = 1.0) -> np.ndarray:
+    """
+    Compute Margin score - higher = more uncertain (low margin).
+
+    Args:
+        logits: Model logits, shape (N, C)
+        temperature: Temperature scaling (default: 1.0)
+
+    Returns:
+        Margin scores in range [0, 1], where 1 indicates highest uncertainty
+    """
+    scaled_logits = logits / temperature
+    probs = torch.softmax(scaled_logits, dim=-1)
+    top2 = torch.topk(probs, k=2, dim=-1).values
+    margin = top2[:, 0] - top2[:, 1]
+    # Invert so higher = more uncertain (low margin = high uncertainty)
+    return (1.0 - margin).numpy()
+
+
 def transform_msp_to_error_prob(msp_scores: np.ndarray) -> np.ndarray:
     """
     Transform MSP scores from [-1, 0] to [0, 1] for interpretation as predicted error probability.
@@ -288,9 +329,10 @@ def _apply_style() -> None:
 
 def run_raw_score_mode(args: argparse.Namespace) -> None:
     """
-    Generate raw MSP score reliability diagram.
+    Generate raw score reliability diagram.
 
-    Shows that raw MSP score is not calibrated as an error probability estimator.
+    Shows that raw uncertainty scores (MSP, Doctor, Margin) are not well calibrated
+    as error probability estimators.
     """
     latent_dir = Path(args.latent_dir)
     run_dir = Path(args.run_dir)
@@ -349,13 +391,35 @@ def run_raw_score_mode(args: argparse.Namespace) -> None:
     print(f"Test set size: {len(errors_test)}")
     print(f"Test error rate: {errors_test.mean():.4f}")
 
-    # Compute MSP scores (temperature=1.0, as per experiment config)
-    msp_scores = compute_msp_score(logits_test, temperature=1.0)
+    # Compute raw scores based on score type
+    score_type = args.score_type
+    temperature = args.temperature
+    print(f"Score type: {score_type}, temperature: {temperature}")
 
-    # Transform to [0, 1] for interpretation as predicted error probability
-    transformed_scores = transform_msp_to_error_prob(msp_scores)
+    if score_type == "msp":
+        raw_scores = compute_msp_score(logits_test, temperature=temperature)
+        # Transform from [-1, 0] to [0, 1]
+        transformed_scores = transform_msp_to_error_prob(raw_scores)
+        score_label = "MSP"
+    elif score_type == "doctor":
+        raw_scores = compute_doctor_score(logits_test, temperature=temperature, normalize=args.normalize)
+        # Doctor scores are already high = uncertain; scale to [0, 1] for binning
+        # Normalized Gini can exceed 1, so we clip/scale
+        score_min, score_max = raw_scores.min(), raw_scores.max()
+        if score_max > score_min:
+            transformed_scores = (raw_scores - score_min) / (score_max - score_min)
+        else:
+            transformed_scores = np.zeros_like(raw_scores)
+        score_label = "Doctor"
+    elif score_type == "margin":
+        raw_scores = compute_margin_score(logits_test, temperature=temperature)
+        # Margin scores are already in [0, 1] where 1 = most uncertain
+        transformed_scores = raw_scores
+        score_label = "Margin"
+    else:
+        raise ValueError(f"Unknown score type: {score_type}")
 
-    print(f"MSP score range: [{msp_scores.min():.4f}, {msp_scores.max():.4f}]")
+    print(f"Raw {score_label} score range: [{raw_scores.min():.4f}, {raw_scores.max():.4f}]")
     print(f"Transformed score range: [{transformed_scores.min():.4f}, {transformed_scores.max():.4f}]")
 
     # Uniform-mass binning on test set
@@ -462,7 +526,7 @@ def run_raw_score_mode(args: argparse.Namespace) -> None:
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], linestyle="--", color="k", label="Perfect calibration"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="tab:blue", markersize=8, label="Bin (raw MSP)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="tab:blue", markersize=8, label=f"Bin (raw {score_label})"),
     ]
     ax.legend(handles=legend_elements, loc="upper left", frameon=True, framealpha=0.9)
 
@@ -505,8 +569,9 @@ def run_raw_score_mode(args: argparse.Namespace) -> None:
 
     summary = {
         "mode": "raw-score",
-        "score_type": "msp",
-        "temperature": 1.0,
+        "score_type": score_type,
+        "temperature": temperature,
+        "normalize": args.normalize if score_type == "doctor" else None,
         "n_bins": n_bins,
         "n_nonempty_bins": int(np.sum(nonempty)),
         "ece": float(ece),
@@ -815,7 +880,32 @@ def parse_args() -> argparse.Namespace:
         type=str,
         choices=["calibrated", "calibrated-mean", "raw-score"],
         default="calibrated",
-        help="Mode: 'calibrated' for conservative calibration diagram, 'calibrated-mean' for mean calibration diagram, 'raw-score' for raw MSP reliability diagram.",
+        help="Mode: 'calibrated' for conservative calibration diagram, 'calibrated-mean' for mean calibration diagram, 'raw-score' for raw score reliability diagram.",
+    )
+    parser.add_argument(
+        "--score-type",
+        type=str,
+        choices=["msp", "doctor", "margin"],
+        default="msp",
+        help="Score type for raw-score mode: 'msp', 'doctor', or 'margin' (default: msp).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature scaling for raw-score mode (default: 1.0).",
+    )
+    parser.add_argument(
+        "--normalize",
+        action="store_true",
+        default=True,
+        help="For Doctor score: use normalized Gini (1-g)/g (default: True).",
+    )
+    parser.add_argument(
+        "--no-normalize",
+        dest="normalize",
+        action="store_false",
+        help="For Doctor score: use unnormalized Gini (1-g).",
     )
     return parser.parse_args()
 
