@@ -1,13 +1,19 @@
 """
 Reliability Diagrams for Uncertainty Calibration.
 
-Two modes:
+Three modes:
 1. `calibrated` (default): Conservative calibration upper reliability diagram
    - X-axis: Upper bound û_b from conservative calibration (Hoeffding + Bonferroni)
    - Y-axis: Empirical error rate p̂_b on test set
    - Reference: Diagonal y=x (points should be below if calibration is conservative)
 
-2. `raw-score`: Raw MSP score reliability diagram
+2. `calibrated-mean`: Calibrated mean reliability diagram (cf. Corollary 4.1)
+   - X-axis: Mean calibration error p̂_cal(b) per bin from cal set
+   - Y-axis: Empirical error rate p̂_test(b) on test set
+   - Reference: Diagonal y=x (points should lie ON diagonal if calibrated)
+   - Shows that uniform-mass binning produces a calibrated score
+
+3. `raw-score`: Raw MSP score reliability diagram
    - X-axis: Mean transformed MSP score per bin (predicted error probability)
    - Y-axis: Empirical error rate per bin (actual error probability)
    - Reference: Diagonal y=x (perfect calibration)
@@ -20,6 +26,14 @@ Usage (calibrated mode):
         --n-clusters 50 \
         --alpha 0.05 \
         --output-dir results/analysis/reliability_diagram/imagenet_vit_base16
+
+Usage (calibrated-mean mode):
+    python scripts/analysis/upper_reliability_diagram.py \
+        --run-dir results/partition_binning/imagenet/timm_vit_base16_ce/partition/runs/msp-unif-mass-sim-grid-20260120/seed-split-1 \
+        --latent-dir latent/imagenet_timm_vit_base16_ce/transform-test_n-epochs-1 \
+        --n-clusters 50 \
+        --mode calibrated-mean \
+        --output-dir results/analysis/reliability_diagram/imagenet_vit_base16_mean
 
 Usage (raw-score mode):
     python scripts/analysis/upper_reliability_diagram.py \
@@ -510,6 +524,231 @@ def run_raw_score_mode(args: argparse.Namespace) -> None:
     print(f"Saved stats to: {stats_output}")
 
 
+def run_calibrated_mean_mode(args: argparse.Namespace) -> None:
+    """
+    Generate calibrated-mean reliability diagram (cf. Corollary 4.1).
+
+    Shows that uniform-mass binning produces a calibrated score when using the mean.
+    Points should lie ON the diagonal, demonstrating calibration.
+    """
+    run_dir = Path(args.run_dir)
+    latent_dir = Path(args.latent_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else run_dir / "reliability_diagram_mean"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    _apply_style()
+
+    # Load partition stats from calibration
+    stats_path, stats = _load_stats(run_dir, args.n_clusters)
+    clusters_path, clusters_test = _load_clusters_test(run_dir, args.n_clusters)
+
+    n_clusters = int(stats["cluster_intervals"].shape[1])
+    counts_cal = stats["cluster_counts"].squeeze(0).numpy()
+    means_cal = stats["cluster_error_means"].squeeze(0).numpy()
+
+    print(f"Loaded stats from: {stats_path}")
+    print(f"Number of bins: {n_clusters}")
+
+    # Load test errors from latent file
+    latent_path = latent_dir / "full.pt"
+    if not latent_path.exists():
+        candidates = list(latent_dir.glob("*.pt"))
+        if candidates:
+            latent_path = candidates[0]
+        else:
+            raise FileNotFoundError(f"No latent .pt file found in {latent_dir}")
+
+    print(f"Loading latent from: {latent_path}")
+    latent = torch.load(latent_path, map_location="cpu")
+    errors_full = (latent["model_preds"] != latent["labels"]).numpy().astype(int)
+
+    # Get dataset config for split parameters
+    config_dir = run_dir / "configs"
+    if not config_dir.exists():
+        config_dir = run_dir.parent / "configs"
+    dataset_cfg = _load_yaml(config_dir / "dataset.yml") if config_dir.exists() else {}
+    n_samples = dataset_cfg.get("n_samples", {}) if dataset_cfg else {}
+
+    # Extract split parameters
+    seed_split = args.seed_split
+    if seed_split is None and run_dir.name.startswith("seed-split-"):
+        try:
+            seed_split = int(run_dir.name.split("-")[-1])
+        except ValueError:
+            seed_split = None
+
+    n_res = args.n_res if args.n_res is not None else n_samples.get("res", 0)
+    n_cal = args.n_cal if args.n_cal is not None else n_samples.get("cal", 0)
+    n_test = args.n_test if args.n_test is not None else n_samples.get("test", 0)
+
+    print(f"Split params: n_res={n_res}, n_cal={n_cal}, n_test={n_test}, seed_split={seed_split}")
+
+    # Get test subset errors
+    n_total = errors_full.shape[0]
+    test_idx = _build_test_indices(n_total, n_res, n_cal, n_test, seed_split)
+    errors_test = errors_full[test_idx]
+
+    # Verify cluster assignments match test size
+    if len(clusters_test) != len(errors_test):
+        print(f"Warning: clusters_test ({len(clusters_test)}) != errors_test ({len(errors_test)})")
+        print("Using clusters_test length for errors_test")
+        errors_test = errors_test[:len(clusters_test)]
+
+    # Compute per-bin test error rate
+    counts_test = np.bincount(clusters_test, minlength=n_clusters).astype(float)
+    errors_sum_test = np.bincount(clusters_test, weights=errors_test, minlength=n_clusters).astype(float)
+
+    # Handle empty bins
+    err_rate_test = np.zeros(n_clusters)
+    nonempty = counts_test > 0
+    err_rate_test[nonempty] = errors_sum_test[nonempty] / counts_test[nonempty]
+
+    # Compute Clopper-Pearson CI for each bin
+    ci_lower = np.zeros(n_clusters)
+    ci_upper = np.zeros(n_clusters)
+    for b in range(n_clusters):
+        lo, hi = clopper_pearson_interval(
+            int(errors_sum_test[b]),
+            int(counts_test[b]),
+            alpha=args.ci_alpha,
+        )
+        ci_lower[b] = lo
+        ci_upper[b] = hi
+
+    # Compute calibration error (how far from diagonal)
+    calibration_errors = np.abs(means_cal - err_rate_test)
+    ece = np.sum((counts_test / counts_test.sum()) * calibration_errors) if counts_test.sum() > 0 else 0.0
+
+    # Compute statistics relative to means
+    overestimate = err_rate_test < means_cal  # predicted more errors than actual
+    underestimate = err_rate_test > means_cal  # predicted fewer errors than actual
+    n_overestimate = int(np.sum(overestimate & nonempty))
+    n_underestimate = int(np.sum(underestimate & nonempty))
+    n_test_total = int(np.sum(counts_test))
+
+    print(f"\n=== Calibrated Mean Statistics ===")
+    print(f"Total bins: {n_clusters}")
+    print(f"Non-empty bins: {int(np.sum(nonempty))}")
+    print(f"Expected Calibration Error (ECE): {ece:.4f}")
+    print(f"Overestimate bins (p̂_test < p̂_cal): {n_overestimate}")
+    print(f"Underestimate bins (p̂_test > p̂_cal): {n_underestimate}")
+
+    # Create reliability diagram
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    # Only plot non-empty bins
+    mask = nonempty
+    x_plot = means_cal[mask]
+    y_plot = err_rate_test[mask]
+    counts_plot = counts_test[mask]
+    ci_lo_plot = ci_lower[mask]
+    ci_hi_plot = ci_upper[mask]
+
+    # Diagonal reference line (perfect calibration)
+    ax.plot([0, 1], [0, 1], "k--", lw=1.5, label="y = x (perfect calibration)", zorder=1)
+
+    # Scatter points with size proportional to bin count
+    size_scale = 300 / np.max(counts_plot) if np.max(counts_plot) > 0 else 1
+    sizes = counts_plot * size_scale
+    sizes = np.clip(sizes, 20, 300)
+
+    # Use green to indicate calibrated (on diagonal)
+    ax.scatter(
+        x_plot,
+        y_plot,
+        s=sizes,
+        c="tab:green",
+        alpha=0.7,
+        edgecolors="white",
+        linewidths=0.5,
+        zorder=3,
+    )
+
+    # Error bars (Clopper-Pearson CI)
+    yerr_lo = y_plot - ci_lo_plot
+    yerr_hi = ci_hi_plot - y_plot
+    ax.errorbar(
+        x_plot,
+        y_plot,
+        yerr=[yerr_lo, yerr_hi],
+        fmt="none",
+        ecolor="gray",
+        elinewidth=0.8,
+        capsize=2,
+        alpha=0.5,
+        zorder=2,
+    )
+
+    # Labels and title
+    ax.set_xlabel(r"Mean calibration error $\hat{p}_{\mathrm{cal}}(b)$")
+    ax.set_ylabel(r"Empirical test error $\hat{p}_{\mathrm{test}}(b)$")
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_aspect("equal", adjustable="box")
+
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], linestyle="--", color="k", label="Perfect calibration"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="tab:green", markersize=8, label="Bin (calibrated mean)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left", frameon=True, framealpha=0.9)
+
+    # Add annotation with calibration stats
+    stats_text = f"ECE: {ece:.3f}\nBins: {int(np.sum(nonempty))}"
+    ax.text(
+        0.98,
+        0.02,
+        stats_text,
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
+
+    fig.tight_layout()
+
+    # Save figure
+    fig.savefig(output_dir / "calibrated_mean_reliability_diagram.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "calibrated_mean_reliability_diagram.png", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"\nSaved figure to: {output_dir / 'calibrated_mean_reliability_diagram.pdf'}")
+
+    # Save statistics
+    per_bin_stats = []
+    for b in range(n_clusters):
+        per_bin_stats.append({
+            "bin_idx": b,
+            "mean_cal": float(means_cal[b]),
+            "test_error": float(err_rate_test[b]),
+            "ci_lower": float(ci_lower[b]),
+            "ci_upper": float(ci_upper[b]),
+            "count_cal": int(counts_cal[b]),
+            "count_test": int(counts_test[b]),
+            "calibration_error": float(calibration_errors[b]),
+        })
+
+    summary = {
+        "mode": "calibrated-mean",
+        "ci_alpha": args.ci_alpha,
+        "n_clusters": n_clusters,
+        "n_nonempty_bins": int(np.sum(nonempty)),
+        "ece": float(ece),
+        "n_overestimate_bins": n_overestimate,
+        "n_underestimate_bins": n_underestimate,
+        "total_test_samples": n_test_total,
+        "stats_path": str(stats_path),
+        "latent_path": str(latent_path),
+        "per_bin": per_bin_stats,
+    }
+
+    stats_output = output_dir / "calibrated_mean_reliability_stats.json"
+    stats_output.write_text(json.dumps(_serialize(summary), indent=2), encoding="utf-8")
+    print(f"Saved stats to: {stats_output}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Upper reliability diagram for conservative calibration."
@@ -574,9 +813,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["calibrated", "raw-score"],
+        choices=["calibrated", "calibrated-mean", "raw-score"],
         default="calibrated",
-        help="Mode: 'calibrated' for conservative calibration diagram, 'raw-score' for raw MSP reliability diagram.",
+        help="Mode: 'calibrated' for conservative calibration diagram, 'calibrated-mean' for mean calibration diagram, 'raw-score' for raw MSP reliability diagram.",
     )
     return parser.parse_args()
 
@@ -587,6 +826,9 @@ def main() -> None:
     # Dispatch based on mode
     if args.mode == "raw-score":
         run_raw_score_mode(args)
+        return
+    elif args.mode == "calibrated-mean":
+        run_calibrated_mean_mode(args)
         return
 
     # --- Calibrated mode (default) ---
