@@ -186,6 +186,7 @@ def plot_rocauc_vs_nclusters(
     show_mean: bool = True,
     show_stones_rule: bool = True,
     figsize: tuple = (8, 6),
+    log_y: bool = False,
 ):
     """
     Create plot of ROC-AUC vs n_clusters.
@@ -201,6 +202,7 @@ def plot_rocauc_vs_nclusters(
         show_mean: Whether to show the mean score curve
         show_stones_rule: Whether to show the Stone's rule vertical line
         figsize: Figure size
+        log_y: Whether to use log scale for y-axis (plots 1-ROC-AUC)
     """
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -211,6 +213,12 @@ def plot_rocauc_vs_nclusters(
 
     # Get n_clusters values
     n_clusters_values = sorted(partition_results['n_clusters'].unique())
+
+    # Transform function for log scale (1 - ROC-AUC)
+    def transform_y(y):
+        if log_y:
+            return 1 - y
+        return y
 
     # Plot curves for each alpha (score='upper')
     for alpha in alphas:
@@ -225,9 +233,10 @@ def plot_rocauc_vs_nclusters(
             continue
 
         color = ALPHA_COLORS.get(alpha, 'gray')
+        y_vals = transform_y(data['roc_auc_mean'].values)
         ax.errorbar(
             data['n_clusters'],
-            data['roc_auc_mean'],
+            y_vals,
             yerr=data['roc_auc_std'],
             label=f'CD (α={alpha})',
             marker='o',
@@ -247,9 +256,10 @@ def plot_rocauc_vs_nclusters(
         ).reset_index().sort_values('n_clusters')
 
         if not data.empty:
+            y_vals = transform_y(data['roc_auc_mean'].values)
             ax.errorbar(
                 data['n_clusters'],
-                data['roc_auc_mean'],
+                y_vals,
                 yerr=data['roc_auc_std'],
                 label='CD (mean)',
                 marker='s',
@@ -263,21 +273,31 @@ def plot_rocauc_vs_nclusters(
     # Plot baseline as horizontal line
     baseline_mean = baseline_results['roc_auc_mean']
     baseline_std = baseline_results['roc_auc_std']
+    baseline_y = transform_y(baseline_mean)
 
     ax.axhline(
-        baseline_mean,
+        baseline_y,
         color=BASELINE_COLOR,
         linestyle='-',
         linewidth=2,
         label=f'{SCORE_DISPLAY_NAMES.get(score_name, score_name)} (uncertified)',
     )
-    ax.fill_between(
-        [min(n_clusters_values), max(n_clusters_values)],
-        baseline_mean - baseline_std,
-        baseline_mean + baseline_std,
-        color=BASELINE_COLOR,
-        alpha=0.2,
-    )
+    if log_y:
+        ax.fill_between(
+            [min(n_clusters_values), max(n_clusters_values)],
+            transform_y(baseline_mean + baseline_std),
+            transform_y(baseline_mean - baseline_std),
+            color=BASELINE_COLOR,
+            alpha=0.2,
+        )
+    else:
+        ax.fill_between(
+            [min(n_clusters_values), max(n_clusters_values)],
+            baseline_mean - baseline_std,
+            baseline_mean + baseline_std,
+            color=BASELINE_COLOR,
+            alpha=0.2,
+        )
 
     # Plot Stone's rule vertical line
     if show_stones_rule and dataset in STONES_RULE_K:
@@ -292,7 +312,11 @@ def plot_rocauc_vs_nclusters(
 
     # Formatting
     ax.set_xlabel('Number of clusters (K)', fontsize=12)
-    ax.set_ylabel('ROC-AUC (test)', fontsize=12)
+    if log_y:
+        ax.set_ylabel('1 - ROC-AUC (test)', fontsize=12)
+        ax.set_yscale('log')
+    else:
+        ax.set_ylabel('ROC-AUC (test)', fontsize=12)
 
     ax.set_xticks(n_clusters_values)
     ax.legend(loc='best', fontsize=9)
@@ -302,14 +326,21 @@ def plot_rocauc_vs_nclusters(
     all_means = list(partition_results['roc_auc_mean']) + [baseline_mean]
     all_stds = list(partition_results['roc_auc_std']) + [baseline_std]
 
-    y_min_data = min(m - s for m, s in zip(all_means, all_stds))
-    y_max_data = max(m + s for m, s in zip(all_means, all_stds))
-
-    # Add small padding on each side of the data range
-    data_range = y_max_data - y_min_data
-    padding = max(data_range * 0.03, 0.001)  # 3% padding, at least 0.1%
-
-    ax.set_ylim(y_min_data - padding, y_max_data + padding)
+    if log_y:
+        # For log scale, transform to 1 - ROC-AUC
+        y_min_data = min(1 - (m + s) for m, s in zip(all_means, all_stds))
+        y_max_data = max(1 - (m - s) for m, s in zip(all_means, all_stds))
+        # Ensure positive values for log scale
+        y_min_data = max(y_min_data, 1e-4)
+        # Add padding in log space
+        ax.set_ylim(y_min_data * 0.8, y_max_data * 1.2)
+    else:
+        y_min_data = min(m - s for m, s in zip(all_means, all_stds))
+        y_max_data = max(m + s for m, s in zip(all_means, all_stds))
+        # Add small padding on each side of the data range
+        data_range = y_max_data - y_min_data
+        padding = max(data_range * 0.03, 0.001)  # 3% padding, at least 0.1%
+        ax.set_ylim(y_min_data - padding, y_max_data + padding)
 
     plt.tight_layout()
 
@@ -402,6 +433,11 @@ def main():
         default=[8, 6],
         help='Figure size (width height)',
     )
+    parser.add_argument(
+        '--log-y',
+        action='store_true',
+        help='Use log scale for y-axis (plots 1 - ROC-AUC)',
+    )
     args = parser.parse_args()
 
     # Get run tags
@@ -452,6 +488,7 @@ def main():
         show_mean=not args.no_mean,
         show_stones_rule=not args.no_stones_rule,
         figsize=tuple(args.figsize),
+        log_y=args.log_y,
     )
 
     # Save params.yml (only once per tag folder, append if exists)
