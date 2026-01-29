@@ -56,12 +56,12 @@ import matplotlib.pyplot as plt
 def compute_msp_score(logits: torch.Tensor, temperature: float = 1.0) -> np.ndarray:
     """
     Compute MSP (Maximum Softmax Probability) score.
-    Higher score = more uncertain (negated MSP).
+    Higher score = more uncertain. Range [0, 1].
     """
     scaled_logits = logits / temperature
     probs = torch.softmax(scaled_logits, dim=-1)
     msp = probs.max(dim=-1).values
-    return -msp.numpy()
+    return (1.0 - msp).numpy()
 
 
 def compute_doctor_score(logits: torch.Tensor, temperature: float = 1.0, normalize: bool = True) -> np.ndarray:
@@ -448,7 +448,7 @@ def run_single_repetition(
     # SECTION 3: Selective risk metrics (Corollary 4.2) for all score types
     # =========================================================================
 
-    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    thresholds = [0.01, 0.02, 0.03, 0.05, 0.10, 0.15, 0.20]
 
     for st_name, (_, st_eval) in score_types_data.items():
         all_success = True
@@ -616,7 +616,7 @@ def aggregate_results(per_rep_results: List[Dict], alpha_values: List[float]) ->
     # =========================================================================
     # SECTION 3: Selective risk metrics for all score types (default alpha)
     # =========================================================================
-    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    thresholds = [0.01, 0.02, 0.03, 0.05, 0.10, 0.15, 0.20]
 
     for st in score_types:
         # All thresholds success
@@ -892,7 +892,7 @@ def plot_selective_risk_vs_threshold(aggregated: Dict, alpha_values: List[float]
     """Plot selective risk success rate vs threshold for all score types (Corollary 4.2)."""
     apply_plot_style()
 
-    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    thresholds = [0.01, 0.02, 0.03, 0.05, 0.10, 0.15, 0.20]
     score_types = ["raw", "mean", "upper"]
     colors = {"raw": "tab:orange", "mean": "tab:green", "upper": "tab:blue"}
     labels = {"raw": "Raw score", "mean": "Mean score", "upper": "Upper bound (α=0.05)"}
@@ -933,7 +933,7 @@ def plot_selective_risk_vs_threshold(aggregated: Dict, alpha_values: List[float]
     ax.set_xlabel(r"Threshold $\tau$")
     ax.set_ylabel(r"Success rate $P(R(\tau) \leq \tau)$")
     ax.set_title("Selective Risk Guarantee Validation (Corollary 4.2)")
-    ax.set_xlim(0.02, 0.55)
+    ax.set_xlim(0.0, 0.25)
     ax.set_ylim(0.3, 1.02)
     ax.legend(loc="lower right")
 
@@ -1044,7 +1044,7 @@ def plot_risk_coverage_curve(per_rep_results: List[Dict], output_dir: Path):
     """Plot average risk-coverage curve for all score types."""
     apply_plot_style()
 
-    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    thresholds = [0.01, 0.02, 0.03, 0.05, 0.10, 0.15, 0.20]
     score_types = ["raw", "mean", "upper"]
     colors = {"raw": "tab:orange", "mean": "tab:green", "upper": "tab:blue"}
     labels = {"raw": "Raw score", "mean": "Mean score", "upper": "Upper bound"}
@@ -1380,7 +1380,7 @@ def main():
 
     print("\n3b. Per-Threshold Success Rate (Upper Bound, α=0.05):")
     print("-" * 70)
-    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    thresholds = [0.01, 0.02, 0.03, 0.05, 0.10, 0.15, 0.20]
     print(f"{'Threshold':>10} | {'Coverage':>12} | {'Sel. Risk':>12} | {'Success':>12} | {'95% CI':>20}")
     print("-" * 70)
 
