@@ -23,7 +23,23 @@ import argparse
 from typing import Optional
 from datetime import datetime
 
-from error_estimation.utils.results_helper import setup_publication_style
+def setup_publication_style():
+    """Setup matplotlib for publication-quality plots."""
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({
+        "figure.dpi": 150,
+        "savefig.dpi": 300,
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 9,
+        "axes.grid": True,
+        "grid.alpha": 0.3,
+        "font.family": "serif",
+        "mathtext.fontset": "cm",
+    })
 
 
 # Default run tags
