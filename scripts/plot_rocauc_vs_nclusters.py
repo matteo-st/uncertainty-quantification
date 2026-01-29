@@ -58,12 +58,17 @@ DEFAULT_RUN_TAGS = {
     },
 }
 
-# Baseline postprocessor names
-BASELINE_POSTPROCESSOR = {
-    'margin': 'margin',
-    'msp': 'msp',
-    'doctor': 'doctor',
-}
+# Baseline postprocessor names - some have different folder names per dataset
+def get_baseline_postprocessor(score_name: str, dataset: str) -> str:
+    """Get the baseline postprocessor folder name for a given score and dataset."""
+    if score_name == 'msp':
+        # CIFAR datasets use 'odin' folder for MSP baseline, ImageNet uses 'msp'
+        if dataset in ['cifar10', 'cifar100']:
+            return 'odin'
+        else:
+            return 'msp'
+    # For other scores, folder name matches score name
+    return score_name
 
 # Display names
 SCORE_DISPLAY_NAMES = {
@@ -450,7 +455,7 @@ def main():
     # Get run tags
     baseline_run_tag = args.baseline_run_tag or DEFAULT_RUN_TAGS[args.score_name]['baseline']
     partition_run_tag = args.partition_run_tag or DEFAULT_RUN_TAGS[args.score_name]['partition']
-    baseline_postprocessor = BASELINE_POSTPROCESSOR[args.score_name]
+    baseline_postprocessor = get_baseline_postprocessor(args.score_name, args.dataset)
 
     print(f"Loading results for {args.score_name} / {args.dataset} / {args.model}")
     print(f"  Baseline run tag: {baseline_run_tag}")
