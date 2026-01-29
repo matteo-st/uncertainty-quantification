@@ -256,7 +256,7 @@ def plot_metric_vs_nclusters(
             label=f'Conservative (α={alpha})',
             marker='o',
             color=color,
-            capsize=3,
+            capsize=6,
             linewidth=2,
             markersize=6,
         )
@@ -278,7 +278,7 @@ def plot_metric_vs_nclusters(
                 label='Calibrated (mean)',
                 marker='s',
                 color=MEAN_COLOR,
-                capsize=3,
+                capsize=6,
                 linewidth=2,
                 markersize=6,
                 linestyle='--',
