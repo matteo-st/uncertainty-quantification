@@ -113,13 +113,15 @@ def load_partition_results(
     model: str,
     run_tag: str,
     n_seeds: int = 9,
+    metric: str = 'roc_auc',
 ) -> pd.DataFrame:
     """
     Load partition results for all seeds and aggregate.
 
-    Returns DataFrame with columns: n_clusters, alpha, score, roc_auc_mean, roc_auc_std
+    Returns DataFrame with columns: n_clusters, alpha, score, metric_mean, metric_std
     """
     all_results = []
+    metric_col = f'{metric}_test'
 
     for seed in range(1, n_seeds + 1):
         csv_path = (
@@ -133,7 +135,7 @@ def load_partition_results(
 
         df = pd.read_csv(csv_path)
         df['seed'] = seed
-        all_results.append(df[['n_clusters', 'alpha', 'score', 'roc_auc_test', 'seed']])
+        all_results.append(df[['n_clusters', 'alpha', 'score', metric_col, 'seed']])
 
     if not all_results:
         raise ValueError(f"No results found for {dataset}/{model}")
@@ -142,8 +144,8 @@ def load_partition_results(
 
     # Aggregate by n_clusters, alpha, score
     aggregated = combined.groupby(['n_clusters', 'alpha', 'score']).agg(
-        roc_auc_mean=('roc_auc_test', 'mean'),
-        roc_auc_std=('roc_auc_test', 'std'),
+        metric_mean=(metric_col, 'mean'),
+        metric_std=(metric_col, 'std'),
         n_seeds=('seed', 'count'),
     ).reset_index()
 
@@ -157,13 +159,15 @@ def load_baseline_results(
     postprocessor: str,
     run_tag: str,
     n_seeds: int = 9,
+    metric: str = 'roc_auc',
 ) -> dict:
     """
-    Load baseline results and return best ROC-AUC (selected on res split).
+    Load baseline results and return best metric (selected on res split).
 
-    Returns dict with roc_auc_mean, roc_auc_std
+    Returns dict with metric_mean, metric_std
     """
-    roc_aucs = []
+    metric_values = []
+    metric_col = f'{metric}_test'
 
     for seed in range(1, n_seeds + 1):
         csv_path = (
@@ -179,25 +183,26 @@ def load_baseline_results(
 
         # Select best hyperparameters on res split (minimize FPR@95)
         best_idx = df['fpr_res'].idxmin()
-        roc_aucs.append(df.loc[best_idx, 'roc_auc_test'])
+        metric_values.append(df.loc[best_idx, metric_col])
 
-    if not roc_aucs:
+    if not metric_values:
         raise ValueError(f"No baseline results found for {dataset}/{model}/{postprocessor}")
 
     return {
-        'roc_auc_mean': np.mean(roc_aucs),
-        'roc_auc_std': np.std(roc_aucs),
-        'n_seeds': len(roc_aucs),
+        'metric_mean': np.mean(metric_values),
+        'metric_std': np.std(metric_values),
+        'n_seeds': len(metric_values),
     }
 
 
-def plot_rocauc_vs_nclusters(
+def plot_metric_vs_nclusters(
     partition_results: pd.DataFrame,
     baseline_results: dict,
     score_name: str,
     dataset: str,
     model: str,
     output_path: Path,
+    metric: str = 'roc_auc',
     alphas: Optional[list] = None,
     show_mean: bool = True,
     show_stones_rule: bool = True,
@@ -205,15 +210,16 @@ def plot_rocauc_vs_nclusters(
     log_y: bool = False,
 ):
     """
-    Create plot of ROC-AUC vs n_clusters.
+    Create plot of metric vs n_clusters.
 
     Args:
         partition_results: DataFrame with partition results
-        baseline_results: Dict with baseline ROC-AUC
+        baseline_results: Dict with baseline metric
         score_name: Name of the score (e.g., 'margin', 'msp')
         dataset: Dataset name
         model: Model name
         output_path: Path to save the figure
+        metric: Metric to plot ('roc_auc' or 'aurc')
         alphas: List of alpha values to plot (default: all available)
         show_mean: Whether to show the mean score curve
         show_stones_rule: Whether to show the Stone's rule vertical line
@@ -245,8 +251,8 @@ def plot_rocauc_vs_nclusters(
         color = ALPHA_COLORS.get(alpha, 'gray')
         ax.errorbar(
             data['n_clusters'],
-            data['roc_auc_mean'],
-            yerr=data['roc_auc_std'],
+            data['metric_mean'],
+            yerr=data['metric_std'],
             label=f'Conservative (α={alpha})',
             marker='o',
             color=color,
@@ -260,15 +266,15 @@ def plot_rocauc_vs_nclusters(
         # Use first available alpha for mean (they should all be the same)
         mask = (partition_results['score'] == 'mean')
         data = partition_results[mask].groupby('n_clusters').agg(
-            roc_auc_mean=('roc_auc_mean', 'first'),
-            roc_auc_std=('roc_auc_std', 'first'),
+            metric_mean=('metric_mean', 'first'),
+            metric_std=('metric_std', 'first'),
         ).reset_index().sort_values('n_clusters')
 
         if not data.empty:
             ax.errorbar(
                 data['n_clusters'],
-                data['roc_auc_mean'],
-                yerr=data['roc_auc_std'],
+                data['metric_mean'],
+                yerr=data['metric_std'],
                 label='Calibrated (mean)',
                 marker='s',
                 color=MEAN_COLOR,
@@ -279,8 +285,8 @@ def plot_rocauc_vs_nclusters(
             )
 
     # Plot baseline as horizontal line
-    baseline_mean = baseline_results['roc_auc_mean']
-    baseline_std = baseline_results['roc_auc_std']
+    baseline_mean = baseline_results['metric_mean']
+    baseline_std = baseline_results['metric_std']
 
     ax.axhline(
         baseline_mean,
@@ -310,7 +316,8 @@ def plot_rocauc_vs_nclusters(
 
     # Formatting
     ax.set_xlabel('Number of clusters (K)', fontsize=12)
-    ax.set_ylabel('ROC-AUC (test)', fontsize=12)
+    metric_label = 'ROC-AUC' if metric == 'roc_auc' else 'AURC'
+    ax.set_ylabel(f'{metric_label} (test)', fontsize=12)
 
     if log_y:
         ax.set_yscale('log')
@@ -320,8 +327,8 @@ def plot_rocauc_vs_nclusters(
     ax.grid(True, alpha=0.3)
 
     # Set y-axis limits - zoom in on the actual data range
-    all_means = list(partition_results['roc_auc_mean']) + [baseline_mean]
-    all_stds = list(partition_results['roc_auc_std']) + [baseline_std]
+    all_means = list(partition_results['metric_mean']) + [baseline_mean]
+    all_stds = list(partition_results['metric_std']) + [baseline_std]
 
     y_min_data = min(m - s for m, s in zip(all_means, all_stds))
     y_max_data = max(m + s for m, s in zip(all_means, all_stds))
@@ -431,6 +438,13 @@ def main():
         action='store_true',
         help='Use log scale for y-axis',
     )
+    parser.add_argument(
+        '--metric',
+        type=str,
+        choices=['roc_auc', 'aurc'],
+        default='roc_auc',
+        help='Metric to plot (default: roc_auc)',
+    )
     args = parser.parse_args()
 
     # Get run tags
@@ -449,6 +463,7 @@ def main():
         args.model,
         partition_run_tag,
         args.n_seeds,
+        metric=args.metric,
     )
     print(f"  Loaded {len(partition_results)} partition configurations")
 
@@ -459,24 +474,27 @@ def main():
         baseline_postprocessor,
         baseline_run_tag,
         args.n_seeds,
+        metric=args.metric,
     )
-    print(f"  Baseline ROC-AUC: {baseline_results['roc_auc_mean']:.4f} ± {baseline_results['roc_auc_std']:.4f}")
+    metric_label = 'ROC-AUC' if args.metric == 'roc_auc' else 'AURC'
+    print(f"  Baseline {metric_label}: {baseline_results['metric_mean']:.4f} ± {baseline_results['metric_std']:.4f}")
 
-    # Generate output path: docs/figures/<score_name>/<partition_run_tag>/<dataset>_<model>_rocauc_vs_nclusters.pdf
+    # Generate output path: docs/figures/<score_name>/<partition_run_tag>/<dataset>_<model>_<metric>_vs_nclusters.pdf
     output_dir = args.output_dir / args.score_name / partition_run_tag
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_filename = f"{args.dataset}_{args.model}_rocauc_vs_nclusters.pdf"
+    output_filename = f"{args.dataset}_{args.model}_{args.metric}_vs_nclusters.pdf"
     output_path = output_dir / output_filename
 
     # Create plot
-    plot_rocauc_vs_nclusters(
+    plot_metric_vs_nclusters(
         partition_results,
         baseline_results,
         args.score_name,
         args.dataset,
         args.model,
         output_path,
+        metric=args.metric,
         alphas=args.alphas,
         show_mean=not args.no_mean,
         show_stones_rule=not args.no_stones_rule,
