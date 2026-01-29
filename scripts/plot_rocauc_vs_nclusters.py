@@ -58,10 +58,10 @@ DEFAULT_RUN_TAGS = {
     },
 }
 
-# Baseline postprocessor names (MSP uses 'odin' internally)
+# Baseline postprocessor names
 BASELINE_POSTPROCESSOR = {
     'margin': 'margin',
-    'msp': 'odin',
+    'msp': 'msp',
     'doctor': 'doctor',
 }
 
