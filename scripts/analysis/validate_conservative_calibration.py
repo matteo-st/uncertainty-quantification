@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Validate Conservative Calibration with Multiple Seeds (Corollary 4.1).
+Validate Conservative Calibration with Multiple Seeds.
 
-Empirically validates the guarantee:
-    P_{D_cal ~ P^n}(for all bins b: η(b) ≤ û(b)) ≥ 1 - α
+Validates two key theoretical guarantees:
+- Corollary 4.1 (Per-bin calibration): P(for all bins b: η(b) ≤ û(b)) ≥ 1 - α
+- Corollary 4.2 (Selective risk): P(R(τ) ≤ τ) ≥ 1 - α for upper bound scores
 
-Runs 100-200 repetitions (seeds) using pre-computed logits.
+Computes ALL metrics for THREE score types:
+- Raw: s(x) - Original uncertainty score
+- Mean: p̂_cal(b) - Mean error rate of bin b on cal set
+- Upper: û(b) - Hoeffding upper bound for bin b
+
+Runs 100+ repetitions (seeds) using pre-computed logits.
 Each repetition:
 1. Fixes res split (for hyperparameter selection consistency)
-2. Resamples cal/test from remaining pool
+2. Resamples cal/eval from remaining pool
 3. Fits uniform-mass binning on cal
-4. Computes Hoeffding upper bounds
-5. Evaluates violations on test
+4. Computes per-bin means and Hoeffding upper bounds
+5. Evaluates calibration and selective risk on eval
 
 Usage:
     python scripts/analysis/validate_conservative_calibration.py \
@@ -21,12 +27,12 @@ Usage:
         --n-eval 25000 \
         --n-bins 100 \
         --alpha 0.01 0.02 0.05 0.1 0.2 \
-        --n-repetitions 200 \
+        --n-repetitions 100 \
         --score-type msp \
         --temperature 0.6 \
         --base-seed 1 \
         --m-min 20 \
-        --output-dir results/calibration_validation/imagenet/timm_vit_base16_ce/msp/val-200seeds
+        --output-dir results/calibration_validation/imagenet/timm_vit_base16_ce/msp/val-100seeds-v2
 """
 from __future__ import annotations
 
@@ -263,6 +269,24 @@ def compute_aurc(scores: np.ndarray, errors: np.ndarray) -> float:
 # Single Repetition Runner
 # ============================================================================
 
+def _weighted_sum(violations: np.ndarray, counts: np.ndarray, mask: np.ndarray) -> float:
+    """Compute weighted sum of violations over reliable bins."""
+    total = float(np.sum(counts[mask]))
+    if total > 0:
+        return float(np.sum((counts[mask] / total) * violations[mask]))
+    return 0.0
+
+
+def compute_per_bin_mean_score(scores: np.ndarray, clusters: np.ndarray, n_bins: int) -> np.ndarray:
+    """Compute mean score per bin."""
+    counts = np.bincount(clusters, minlength=n_bins).astype(float)
+    score_sums = np.bincount(clusters, weights=scores, minlength=n_bins).astype(float)
+    means = np.zeros(n_bins)
+    nonempty = counts > 0
+    means[nonempty] = score_sums[nonempty] / counts[nonempty]
+    return means
+
+
 def run_single_repetition(
     logits: torch.Tensor,
     labels: np.ndarray,
@@ -280,6 +304,11 @@ def run_single_repetition(
 ) -> Dict[str, Any]:
     """
     Run a single repetition of the calibration validation.
+
+    Computes metrics for THREE score types:
+    - raw: Original uncertainty score s(x)
+    - mean: Mean error rate p̂_cal(b) assigned to each sample
+    - upper: Hoeffding upper bound û(b) assigned to each sample
 
     Args:
         logits: Full logits tensor
@@ -315,15 +344,15 @@ def run_single_repetition(
     errors_cal = (model_preds[cal_idx] != labels[cal_idx]).astype(int)
     errors_eval = (model_preds[eval_idx] != labels[eval_idx]).astype(int)
 
-    # 3. Compute scores
-    scores_cal = compute_score(logits_cal, score_type, temperature, normalize)
-    scores_eval = compute_score(logits_eval, score_type, temperature, normalize)
+    # 3. Compute raw scores
+    scores_raw_cal = compute_score(logits_cal, score_type, temperature, normalize)
+    scores_raw_eval = compute_score(logits_eval, score_type, temperature, normalize)
 
     # 4. Fit uniform-mass binning on cal
-    clusters_cal, bin_edges = uniform_mass_binning(scores_cal, n_bins)
+    clusters_cal, bin_edges = uniform_mass_binning(scores_raw_cal, n_bins)
 
     # 5. Assign eval samples to bins
-    clusters_eval = assign_to_bins(scores_eval, bin_edges)
+    clusters_eval = assign_to_bins(scores_raw_eval, bin_edges)
 
     # 6. Compute per-bin statistics on cal
     counts_cal = np.bincount(clusters_cal, minlength=n_bins).astype(float)
@@ -339,57 +368,180 @@ def run_single_repetition(
     nonempty_eval = counts_eval > 0
     means_eval[nonempty_eval] = error_sums_eval[nonempty_eval] / counts_eval[nonempty_eval]
 
-    # 8. Compute metrics for each alpha value
+    # 8. Compute mean raw score per bin (for raw score calibration check)
+    raw_score_means_per_bin = compute_per_bin_mean_score(scores_raw_eval, clusters_eval, n_bins)
+
+    # 9. Create calibrated scores for eval samples
+    # Mean score: assign bin mean error rate to each eval sample
+    scores_mean_eval = means_cal[clusters_eval]
+    scores_mean_cal = means_cal[clusters_cal]
+
+    # Reliable bin mask for calibration metrics
+    reliable_mask = counts_eval >= m_min
+
+    # =========================================================================
+    # Initialize results dictionary
+    # =========================================================================
     results = {
         "seed": seed,
         "n_cal": n_cal,
         "n_eval": n_eval,
         "error_rate_cal": float(errors_cal.mean()),
         "error_rate_eval": float(errors_eval.mean()),
+        "n_reliable_bins": int(np.sum(reliable_mask)),
     }
 
-    # Discriminative metrics on cal and eval
-    results["roc_auc_cal"] = float(compute_roc_auc(scores_cal, errors_cal))
-    results["roc_auc_eval"] = float(compute_roc_auc(scores_eval, errors_eval))
-    results["fpr_at_95_cal"] = float(compute_fpr_at_tpr(scores_cal, errors_cal, 0.95))
-    results["fpr_at_95_eval"] = float(compute_fpr_at_tpr(scores_eval, errors_eval, 0.95))
-    results["aurc_cal"] = float(compute_aurc(scores_cal, errors_cal))
-    results["aurc_eval"] = float(compute_aurc(scores_eval, errors_eval))
+    # =========================================================================
+    # SECTION 1: Discriminative metrics for all score types
+    # For upper score: we use alpha=0.05 as the default
+    # =========================================================================
 
-    # Per-alpha metrics
+    # We'll compute upper bounds once with alpha=0.05 for discriminative metrics
+    default_alpha = 0.05
+    upper_bounds_default = compute_hoeffding_upper(means_cal, counts_cal, default_alpha, simultaneous=True)
+    scores_upper_eval = upper_bounds_default[clusters_eval]
+    scores_upper_cal = upper_bounds_default[clusters_cal]
+
+    score_types_data = {
+        "raw": (scores_raw_cal, scores_raw_eval),
+        "mean": (scores_mean_cal, scores_mean_eval),
+        "upper": (scores_upper_cal, scores_upper_eval),
+    }
+
+    for st_name, (st_cal, st_eval) in score_types_data.items():
+        # Discriminative metrics on cal and eval
+        results[f"{st_name}_roc_auc_cal"] = float(compute_roc_auc(st_cal, errors_cal))
+        results[f"{st_name}_roc_auc_eval"] = float(compute_roc_auc(st_eval, errors_eval))
+        results[f"{st_name}_fpr_at_95_cal"] = float(compute_fpr_at_tpr(st_cal, errors_cal, 0.95))
+        results[f"{st_name}_fpr_at_95_eval"] = float(compute_fpr_at_tpr(st_eval, errors_eval, 0.95))
+        results[f"{st_name}_aurc_cal"] = float(compute_aurc(st_cal, errors_cal))
+        results[f"{st_name}_aurc_eval"] = float(compute_aurc(st_eval, errors_eval))
+
+    # =========================================================================
+    # SECTION 2: Per-bin calibration metrics (Corollary 4.1) for all score types
+    # =========================================================================
+
+    # For raw score: compare mean raw score per bin vs mean error rate per bin
+    # For mean score: compare means_cal vs means_eval (both are per-bin means)
+    # For upper score: compare upper_bounds vs means_eval
+
+    # Raw score calibration (one-sided: error rate should not exceed mean raw score)
+    raw_one_sided_violations = np.maximum(means_eval - raw_score_means_per_bin, 0)
+    raw_two_sided_violations = np.abs(means_eval - raw_score_means_per_bin)
+
+    results["raw_one_sided_max_violation"] = float(np.max(raw_one_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+    results["raw_one_sided_weighted_violation"] = _weighted_sum(raw_one_sided_violations, counts_eval, reliable_mask)
+    results["raw_one_sided_success"] = int(results["raw_one_sided_max_violation"] == 0)
+    results["raw_one_sided_n_violating"] = int(np.sum((raw_one_sided_violations > 0) & reliable_mask))
+    results["raw_two_sided_max_violation"] = float(np.max(raw_two_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+    results["raw_two_sided_weighted_violation"] = _weighted_sum(raw_two_sided_violations, counts_eval, reliable_mask)
+
+    # Mean score calibration (one-sided: error rate should not exceed cal mean)
+    mean_one_sided_violations = np.maximum(means_eval - means_cal, 0)
+    mean_two_sided_violations = np.abs(means_eval - means_cal)
+
+    results["mean_one_sided_max_violation"] = float(np.max(mean_one_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+    results["mean_one_sided_weighted_violation"] = _weighted_sum(mean_one_sided_violations, counts_eval, reliable_mask)
+    results["mean_one_sided_success"] = int(results["mean_one_sided_max_violation"] == 0)
+    results["mean_one_sided_n_violating"] = int(np.sum((mean_one_sided_violations > 0) & reliable_mask))
+    results["mean_two_sided_max_violation"] = float(np.max(mean_two_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+    results["mean_two_sided_weighted_violation"] = _weighted_sum(mean_two_sided_violations, counts_eval, reliable_mask)
+
+    # =========================================================================
+    # SECTION 3: Selective risk metrics (Corollary 4.2) for all score types
+    # =========================================================================
+
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+
+    for st_name, (_, st_eval) in score_types_data.items():
+        all_success = True
+        max_risk_violation = 0.0
+
+        for tau in thresholds:
+            accepted = st_eval <= tau
+            coverage = float(accepted.mean())
+
+            if accepted.sum() > 0:
+                selective_risk = float(errors_eval[accepted].mean())
+            else:
+                selective_risk = 0.0
+
+            risk_violation = max(selective_risk - tau, 0)
+            risk_success = int(selective_risk <= tau)
+
+            tau_key = f"{tau:.2f}".replace(".", "_")
+            results[f"{st_name}_coverage_{tau_key}"] = coverage
+            results[f"{st_name}_selective_risk_{tau_key}"] = selective_risk
+            results[f"{st_name}_risk_violation_{tau_key}"] = risk_violation
+            results[f"{st_name}_risk_success_{tau_key}"] = risk_success
+
+            if risk_success == 0:
+                all_success = False
+            max_risk_violation = max(max_risk_violation, risk_violation)
+
+        results[f"{st_name}_all_thresholds_success"] = int(all_success)
+        results[f"{st_name}_max_risk_violation"] = max_risk_violation
+
+    # =========================================================================
+    # SECTION 4: Per-alpha metrics for upper bound (Corollary 4.1 with Bonferroni)
+    # =========================================================================
+
     for alpha in alpha_values:
         alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
 
         # Compute Hoeffding upper bounds (with Bonferroni)
         upper_bounds = compute_hoeffding_upper(means_cal, counts_cal, alpha, simultaneous=True)
 
-        # Compute violations (only bins with sufficient samples)
-        reliable_mask = counts_eval >= m_min
-        violations = np.maximum(means_eval - upper_bounds, 0)
+        # Upper score calibration (one-sided: error rate should not exceed upper bound)
+        upper_one_sided_violations = np.maximum(means_eval - upper_bounds, 0)
+        upper_two_sided_violations = np.abs(means_eval - upper_bounds)
 
         # Max violation (over reliable bins)
-        reliable_violations = violations.copy()
-        reliable_violations[~reliable_mask] = 0
-        max_violation = float(np.max(reliable_violations))
-
-        # Weighted violation
-        total_reliable = float(np.sum(counts_eval[reliable_mask]))
-        if total_reliable > 0:
-            weighted_violation = float(np.sum((counts_eval[reliable_mask] / total_reliable) * violations[reliable_mask]))
-        else:
-            weighted_violation = 0.0
+        max_violation = float(np.max(upper_one_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+        weighted_violation = _weighted_sum(upper_one_sided_violations, counts_eval, reliable_mask)
 
         # Success indicator (no violations in any bin)
         success = int(max_violation == 0)
 
         # Number of violating bins
-        n_violating = int(np.sum((violations > 0) & reliable_mask))
+        n_violating = int(np.sum((upper_one_sided_violations > 0) & reliable_mask))
 
-        results[f"{alpha_key}_max_violation"] = max_violation
-        results[f"{alpha_key}_weighted_violation"] = weighted_violation
-        results[f"{alpha_key}_success"] = success
-        results[f"{alpha_key}_n_violating_bins"] = n_violating
-        results[f"{alpha_key}_n_reliable_bins"] = int(np.sum(reliable_mask))
+        results[f"{alpha_key}_upper_one_sided_max_violation"] = max_violation
+        results[f"{alpha_key}_upper_one_sided_weighted_violation"] = weighted_violation
+        results[f"{alpha_key}_upper_one_sided_success"] = success
+        results[f"{alpha_key}_upper_one_sided_n_violating"] = n_violating
+        results[f"{alpha_key}_upper_two_sided_max_violation"] = float(np.max(upper_two_sided_violations[reliable_mask])) if reliable_mask.any() else 0.0
+        results[f"{alpha_key}_upper_two_sided_weighted_violation"] = _weighted_sum(upper_two_sided_violations, counts_eval, reliable_mask)
+
+        # Also compute per-alpha selective risk for upper bound
+        scores_upper_alpha_eval = upper_bounds[clusters_eval]
+        all_success_alpha = True
+        max_risk_violation_alpha = 0.0
+
+        for tau in thresholds:
+            accepted = scores_upper_alpha_eval <= tau
+            coverage = float(accepted.mean())
+
+            if accepted.sum() > 0:
+                selective_risk = float(errors_eval[accepted].mean())
+            else:
+                selective_risk = 0.0
+
+            risk_violation = max(selective_risk - tau, 0)
+            risk_success = int(selective_risk <= tau)
+
+            tau_key = f"{tau:.2f}".replace(".", "_")
+            results[f"{alpha_key}_upper_coverage_{tau_key}"] = coverage
+            results[f"{alpha_key}_upper_selective_risk_{tau_key}"] = selective_risk
+            results[f"{alpha_key}_upper_risk_violation_{tau_key}"] = risk_violation
+            results[f"{alpha_key}_upper_risk_success_{tau_key}"] = risk_success
+
+            if risk_success == 0:
+                all_success_alpha = False
+            max_risk_violation_alpha = max(max_risk_violation_alpha, risk_violation)
+
+        results[f"{alpha_key}_upper_all_thresholds_success"] = int(all_success_alpha)
+        results[f"{alpha_key}_upper_max_risk_violation"] = max_risk_violation_alpha
 
     return results
 
@@ -407,39 +559,132 @@ def aggregate_results(per_rep_results: List[Dict], alpha_values: List[float]) ->
         "alpha_values": alpha_values,
     }
 
-    # Aggregate discriminative metrics
-    for metric in ["roc_auc_cal", "roc_auc_eval", "fpr_at_95_cal", "fpr_at_95_eval", "aurc_cal", "aurc_eval"]:
-        values = [r[metric] for r in per_rep_results if not np.isnan(r[metric])]
-        if values:
-            aggregated[f"{metric}_mean"] = float(np.mean(values))
-            aggregated[f"{metric}_std"] = float(np.std(values))
-        else:
-            aggregated[f"{metric}_mean"] = np.nan
-            aggregated[f"{metric}_std"] = np.nan
+    # =========================================================================
+    # SECTION 1: Discriminative metrics for all score types
+    # =========================================================================
+    score_types = ["raw", "mean", "upper"]
+    disc_metrics = ["roc_auc_cal", "roc_auc_eval", "fpr_at_95_cal", "fpr_at_95_eval", "aurc_cal", "aurc_eval"]
 
-    # Aggregate per-alpha metrics
+    for st in score_types:
+        for metric in disc_metrics:
+            key = f"{st}_{metric}"
+            values = [r[key] for r in per_rep_results if not np.isnan(r[key])]
+            if values:
+                aggregated[f"{key}_mean"] = float(np.mean(values))
+                aggregated[f"{key}_std"] = float(np.std(values))
+            else:
+                aggregated[f"{key}_mean"] = np.nan
+                aggregated[f"{key}_std"] = np.nan
+
+    # =========================================================================
+    # SECTION 2: Per-bin calibration metrics for raw and mean score types
+    # =========================================================================
+    for st in ["raw", "mean"]:
+        # One-sided calibration
+        max_viol = [r[f"{st}_one_sided_max_violation"] for r in per_rep_results]
+        weighted_viol = [r[f"{st}_one_sided_weighted_violation"] for r in per_rep_results]
+        successes = [r[f"{st}_one_sided_success"] for r in per_rep_results]
+        n_violating = [r[f"{st}_one_sided_n_violating"] for r in per_rep_results]
+
+        n_success = sum(successes)
+        success_rate = n_success / n_reps
+        ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
+
+        aggregated[f"{st}_one_sided_success_rate"] = float(success_rate)
+        aggregated[f"{st}_one_sided_success_rate_ci_low"] = float(ci_low)
+        aggregated[f"{st}_one_sided_success_rate_ci_high"] = float(ci_high)
+        aggregated[f"{st}_one_sided_max_violation_mean"] = float(np.mean(max_viol))
+        aggregated[f"{st}_one_sided_max_violation_std"] = float(np.std(max_viol))
+        aggregated[f"{st}_one_sided_max_violation_quantiles"] = {
+            "50": float(np.percentile(max_viol, 50)),
+            "75": float(np.percentile(max_viol, 75)),
+            "90": float(np.percentile(max_viol, 90)),
+            "95": float(np.percentile(max_viol, 95)),
+            "99": float(np.percentile(max_viol, 99)),
+        }
+        aggregated[f"{st}_one_sided_weighted_violation_mean"] = float(np.mean(weighted_viol))
+        aggregated[f"{st}_one_sided_weighted_violation_std"] = float(np.std(weighted_viol))
+        aggregated[f"{st}_one_sided_n_violating_mean"] = float(np.mean(n_violating))
+        aggregated[f"{st}_one_sided_n_violating_std"] = float(np.std(n_violating))
+
+        # Two-sided calibration
+        two_max_viol = [r[f"{st}_two_sided_max_violation"] for r in per_rep_results]
+        two_weighted_viol = [r[f"{st}_two_sided_weighted_violation"] for r in per_rep_results]
+
+        aggregated[f"{st}_two_sided_max_violation_mean"] = float(np.mean(two_max_viol))
+        aggregated[f"{st}_two_sided_max_violation_std"] = float(np.std(two_max_viol))
+        aggregated[f"{st}_two_sided_weighted_violation_mean"] = float(np.mean(two_weighted_viol))
+        aggregated[f"{st}_two_sided_weighted_violation_std"] = float(np.std(two_weighted_viol))
+
+    # =========================================================================
+    # SECTION 3: Selective risk metrics for all score types (default alpha)
+    # =========================================================================
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+
+    for st in score_types:
+        # All thresholds success
+        all_success = [r[f"{st}_all_thresholds_success"] for r in per_rep_results]
+        max_risk_viol = [r[f"{st}_max_risk_violation"] for r in per_rep_results]
+
+        n_success = sum(all_success)
+        success_rate = n_success / n_reps
+        ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
+
+        aggregated[f"{st}_all_thresholds_success_rate"] = float(success_rate)
+        aggregated[f"{st}_all_thresholds_success_rate_ci_low"] = float(ci_low)
+        aggregated[f"{st}_all_thresholds_success_rate_ci_high"] = float(ci_high)
+        aggregated[f"{st}_max_risk_violation_mean"] = float(np.mean(max_risk_viol))
+        aggregated[f"{st}_max_risk_violation_std"] = float(np.std(max_risk_viol))
+
+        # Per-threshold metrics
+        for tau in thresholds:
+            tau_key = f"{tau:.2f}".replace(".", "_")
+
+            coverage = [r[f"{st}_coverage_{tau_key}"] for r in per_rep_results]
+            sel_risk = [r[f"{st}_selective_risk_{tau_key}"] for r in per_rep_results]
+            risk_viol = [r[f"{st}_risk_violation_{tau_key}"] for r in per_rep_results]
+            risk_success = [r[f"{st}_risk_success_{tau_key}"] for r in per_rep_results]
+
+            aggregated[f"{st}_coverage_{tau_key}_mean"] = float(np.mean(coverage))
+            aggregated[f"{st}_coverage_{tau_key}_std"] = float(np.std(coverage))
+            aggregated[f"{st}_selective_risk_{tau_key}_mean"] = float(np.mean(sel_risk))
+            aggregated[f"{st}_selective_risk_{tau_key}_std"] = float(np.std(sel_risk))
+            aggregated[f"{st}_risk_violation_{tau_key}_mean"] = float(np.mean(risk_viol))
+            aggregated[f"{st}_risk_violation_{tau_key}_std"] = float(np.std(risk_viol))
+
+            n_success = sum(risk_success)
+            success_rate = n_success / n_reps
+            ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
+            aggregated[f"{st}_risk_success_{tau_key}_rate"] = float(success_rate)
+            aggregated[f"{st}_risk_success_{tau_key}_ci_low"] = float(ci_low)
+            aggregated[f"{st}_risk_success_{tau_key}_ci_high"] = float(ci_high)
+
+    # =========================================================================
+    # SECTION 4: Per-alpha metrics for upper bound (calibration and selective risk)
+    # =========================================================================
     for alpha in alpha_values:
         alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
 
-        max_violations = [r[f"{alpha_key}_max_violation"] for r in per_rep_results]
-        weighted_violations = [r[f"{alpha_key}_weighted_violation"] for r in per_rep_results]
-        successes = [r[f"{alpha_key}_success"] for r in per_rep_results]
-        n_violating = [r[f"{alpha_key}_n_violating_bins"] for r in per_rep_results]
+        # Calibration metrics
+        max_violations = [r[f"{alpha_key}_upper_one_sided_max_violation"] for r in per_rep_results]
+        weighted_violations = [r[f"{alpha_key}_upper_one_sided_weighted_violation"] for r in per_rep_results]
+        successes = [r[f"{alpha_key}_upper_one_sided_success"] for r in per_rep_results]
+        n_violating = [r[f"{alpha_key}_upper_one_sided_n_violating"] for r in per_rep_results]
 
         # Success rate with Clopper-Pearson CI
         n_success = sum(successes)
         success_rate = n_success / n_reps
         ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
 
-        aggregated[f"{alpha_key}_success_rate"] = float(success_rate)
-        aggregated[f"{alpha_key}_success_rate_ci_low"] = float(ci_low)
-        aggregated[f"{alpha_key}_success_rate_ci_high"] = float(ci_high)
+        aggregated[f"{alpha_key}_upper_one_sided_success_rate"] = float(success_rate)
+        aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_low"] = float(ci_low)
+        aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_high"] = float(ci_high)
         aggregated[f"{alpha_key}_target"] = float(1 - alpha)
 
         # Max violation statistics
-        aggregated[f"{alpha_key}_max_violation_mean"] = float(np.mean(max_violations))
-        aggregated[f"{alpha_key}_max_violation_std"] = float(np.std(max_violations))
-        aggregated[f"{alpha_key}_max_violation_quantiles"] = {
+        aggregated[f"{alpha_key}_upper_one_sided_max_violation_mean"] = float(np.mean(max_violations))
+        aggregated[f"{alpha_key}_upper_one_sided_max_violation_std"] = float(np.std(max_violations))
+        aggregated[f"{alpha_key}_upper_one_sided_max_violation_quantiles"] = {
             "50": float(np.percentile(max_violations, 50)),
             "75": float(np.percentile(max_violations, 75)),
             "90": float(np.percentile(max_violations, 90)),
@@ -448,12 +693,57 @@ def aggregate_results(per_rep_results: List[Dict], alpha_values: List[float]) ->
         }
 
         # Weighted violation statistics
-        aggregated[f"{alpha_key}_weighted_violation_mean"] = float(np.mean(weighted_violations))
-        aggregated[f"{alpha_key}_weighted_violation_std"] = float(np.std(weighted_violations))
+        aggregated[f"{alpha_key}_upper_one_sided_weighted_violation_mean"] = float(np.mean(weighted_violations))
+        aggregated[f"{alpha_key}_upper_one_sided_weighted_violation_std"] = float(np.std(weighted_violations))
 
         # Violating bins statistics
-        aggregated[f"{alpha_key}_n_violating_bins_mean"] = float(np.mean(n_violating))
-        aggregated[f"{alpha_key}_n_violating_bins_std"] = float(np.std(n_violating))
+        aggregated[f"{alpha_key}_upper_one_sided_n_violating_mean"] = float(np.mean(n_violating))
+        aggregated[f"{alpha_key}_upper_one_sided_n_violating_std"] = float(np.std(n_violating))
+
+        # Two-sided metrics
+        two_max_viol = [r[f"{alpha_key}_upper_two_sided_max_violation"] for r in per_rep_results]
+        two_weighted_viol = [r[f"{alpha_key}_upper_two_sided_weighted_violation"] for r in per_rep_results]
+        aggregated[f"{alpha_key}_upper_two_sided_max_violation_mean"] = float(np.mean(two_max_viol))
+        aggregated[f"{alpha_key}_upper_two_sided_max_violation_std"] = float(np.std(two_max_viol))
+        aggregated[f"{alpha_key}_upper_two_sided_weighted_violation_mean"] = float(np.mean(two_weighted_viol))
+        aggregated[f"{alpha_key}_upper_two_sided_weighted_violation_std"] = float(np.std(two_weighted_viol))
+
+        # Selective risk metrics per alpha
+        all_success = [r[f"{alpha_key}_upper_all_thresholds_success"] for r in per_rep_results]
+        max_risk_viol = [r[f"{alpha_key}_upper_max_risk_violation"] for r in per_rep_results]
+
+        n_success = sum(all_success)
+        success_rate = n_success / n_reps
+        ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
+
+        aggregated[f"{alpha_key}_upper_all_thresholds_success_rate"] = float(success_rate)
+        aggregated[f"{alpha_key}_upper_all_thresholds_success_rate_ci_low"] = float(ci_low)
+        aggregated[f"{alpha_key}_upper_all_thresholds_success_rate_ci_high"] = float(ci_high)
+        aggregated[f"{alpha_key}_upper_max_risk_violation_mean"] = float(np.mean(max_risk_viol))
+        aggregated[f"{alpha_key}_upper_max_risk_violation_std"] = float(np.std(max_risk_viol))
+
+        # Per-threshold metrics for this alpha
+        for tau in thresholds:
+            tau_key = f"{tau:.2f}".replace(".", "_")
+
+            coverage = [r[f"{alpha_key}_upper_coverage_{tau_key}"] for r in per_rep_results]
+            sel_risk = [r[f"{alpha_key}_upper_selective_risk_{tau_key}"] for r in per_rep_results]
+            risk_viol = [r[f"{alpha_key}_upper_risk_violation_{tau_key}"] for r in per_rep_results]
+            risk_success = [r[f"{alpha_key}_upper_risk_success_{tau_key}"] for r in per_rep_results]
+
+            aggregated[f"{alpha_key}_upper_coverage_{tau_key}_mean"] = float(np.mean(coverage))
+            aggregated[f"{alpha_key}_upper_coverage_{tau_key}_std"] = float(np.std(coverage))
+            aggregated[f"{alpha_key}_upper_selective_risk_{tau_key}_mean"] = float(np.mean(sel_risk))
+            aggregated[f"{alpha_key}_upper_selective_risk_{tau_key}_std"] = float(np.std(sel_risk))
+            aggregated[f"{alpha_key}_upper_risk_violation_{tau_key}_mean"] = float(np.mean(risk_viol))
+            aggregated[f"{alpha_key}_upper_risk_violation_{tau_key}_std"] = float(np.std(risk_viol))
+
+            n_success = sum(risk_success)
+            success_rate = n_success / n_reps
+            ci_low, ci_high = clopper_pearson_interval(n_success, n_reps, alpha=0.05)
+            aggregated[f"{alpha_key}_upper_risk_success_{tau_key}_rate"] = float(success_rate)
+            aggregated[f"{alpha_key}_upper_risk_success_{tau_key}_ci_low"] = float(ci_low)
+            aggregated[f"{alpha_key}_upper_risk_success_{tau_key}_ci_high"] = float(ci_high)
 
     return aggregated
 
@@ -480,7 +770,7 @@ def apply_plot_style():
 
 
 def plot_coverage_vs_alpha(aggregated: Dict, output_dir: Path):
-    """Plot empirical success rate vs alpha (coverage validation)."""
+    """Plot empirical success rate vs alpha (coverage validation for Corollary 4.1)."""
     apply_plot_style()
 
     alpha_values = aggregated["alpha_values"]
@@ -495,9 +785,9 @@ def plot_coverage_vs_alpha(aggregated: Dict, output_dir: Path):
 
     for alpha in alpha_values:
         alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
-        success_rates.append(aggregated[f"{alpha_key}_success_rate"])
-        ci_lows.append(aggregated[f"{alpha_key}_success_rate_ci_low"])
-        ci_highs.append(aggregated[f"{alpha_key}_success_rate_ci_high"])
+        success_rates.append(aggregated[f"{alpha_key}_upper_one_sided_success_rate"])
+        ci_lows.append(aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_low"])
+        ci_highs.append(aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_high"])
         targets.append(aggregated[f"{alpha_key}_target"])
 
     success_rates = np.array(success_rates)
@@ -527,6 +817,7 @@ def plot_coverage_vs_alpha(aggregated: Dict, output_dir: Path):
     ax.set_xlim(-0.01, max(alpha_values) + 0.02)
     ax.set_ylim(0.75, 1.02)
     ax.legend(loc="lower left")
+    ax.set_title("Per-Bin Calibration Guarantee (Corollary 4.1)")
 
     # Add annotation
     n_reps = aggregated["n_repetitions"]
@@ -541,7 +832,7 @@ def plot_coverage_vs_alpha(aggregated: Dict, output_dir: Path):
 
 
 def plot_violation_ecdf(per_rep_results: List[Dict], alpha_values: List[float], output_dir: Path):
-    """Plot ECDF of max violations for each alpha."""
+    """Plot ECDF of max violations for each alpha (upper bound)."""
     apply_plot_style()
 
     fig, ax = plt.subplots(figsize=(6, 5))
@@ -550,7 +841,7 @@ def plot_violation_ecdf(per_rep_results: List[Dict], alpha_values: List[float], 
 
     for alpha, color in zip(alpha_values, colors):
         alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
-        max_violations = [r[f"{alpha_key}_max_violation"] for r in per_rep_results]
+        max_violations = [r[f"{alpha_key}_upper_one_sided_max_violation"] for r in per_rep_results]
 
         # Compute ECDF
         sorted_violations = np.sort(max_violations)
@@ -562,6 +853,7 @@ def plot_violation_ecdf(per_rep_results: List[Dict], alpha_values: List[float], 
     ax.set_xlabel("Max violation $V_r$")
     ax.set_ylabel("ECDF")
     ax.set_xlim(-0.005, None)
+    ax.set_title("ECDF of Max Calibration Violations (Upper Bound)")
     ax.legend(loc="lower right")
 
     fig.tight_layout()
@@ -575,7 +867,7 @@ def plot_violation_histogram(per_rep_results: List[Dict], alpha: float, output_d
     apply_plot_style()
 
     alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
-    max_violations = [r[f"{alpha_key}_max_violation"] for r in per_rep_results]
+    max_violations = [r[f"{alpha_key}_upper_one_sided_max_violation"] for r in per_rep_results]
 
     fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -596,6 +888,219 @@ def plot_violation_histogram(per_rep_results: List[Dict], alpha: float, output_d
     fig.tight_layout()
     fig.savefig(output_dir / f"violation_histogram_alpha_{alpha}.pdf", bbox_inches="tight")
     fig.savefig(output_dir / f"violation_histogram_alpha_{alpha}.png", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_selective_risk_vs_threshold(aggregated: Dict, alpha_values: List[float], output_dir: Path):
+    """Plot selective risk success rate vs threshold for all score types (Corollary 4.2)."""
+    apply_plot_style()
+
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    score_types = ["raw", "mean", "upper"]
+    colors = {"raw": "tab:orange", "mean": "tab:green", "upper": "tab:blue"}
+    labels = {"raw": "Raw score", "mean": "Mean score", "upper": "Upper bound (α=0.05)"}
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for st in score_types:
+        success_rates = []
+        ci_lows = []
+        ci_highs = []
+
+        for tau in thresholds:
+            tau_key = f"{tau:.2f}".replace(".", "_")
+            success_rates.append(aggregated[f"{st}_risk_success_{tau_key}_rate"])
+            ci_lows.append(aggregated[f"{st}_risk_success_{tau_key}_ci_low"])
+            ci_highs.append(aggregated[f"{st}_risk_success_{tau_key}_ci_high"])
+
+        success_rates = np.array(success_rates)
+        ci_lows = np.array(ci_lows)
+        ci_highs = np.array(ci_highs)
+
+        ax.errorbar(
+            thresholds,
+            success_rates,
+            yerr=[success_rates - ci_lows, ci_highs - success_rates],
+            fmt="o-",
+            capsize=4,
+            capthick=1.5,
+            markersize=6,
+            color=colors[st],
+            label=labels[st],
+        )
+
+    # Reference line for expected success rate of upper bound
+    ax.axhline(0.95, color="gray", linestyle="--", lw=1.5, label=r"Target: $1 - \alpha = 0.95$")
+    ax.axhline(0.5, color="gray", linestyle=":", lw=1, alpha=0.5)
+
+    ax.set_xlabel(r"Threshold $\tau$")
+    ax.set_ylabel(r"Success rate $P(R(\tau) \leq \tau)$")
+    ax.set_title("Selective Risk Guarantee Validation (Corollary 4.2)")
+    ax.set_xlim(0.02, 0.55)
+    ax.set_ylim(0.3, 1.02)
+    ax.legend(loc="lower right")
+
+    n_reps = aggregated["n_repetitions"]
+    ax.text(0.02, 0.02, f"n = {n_reps} repetitions", transform=ax.transAxes,
+            ha="left", va="bottom", fontsize=9,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "selective_risk_vs_threshold.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "selective_risk_vs_threshold.png", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_discriminative_comparison(aggregated: Dict, output_dir: Path):
+    """Plot discriminative metrics comparison across score types."""
+    apply_plot_style()
+
+    score_types = ["raw", "mean", "upper"]
+    metrics = ["roc_auc", "fpr_at_95", "aurc"]
+    metric_labels = {"roc_auc": "ROC-AUC", "fpr_at_95": "FPR@95", "aurc": "AURC"}
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+
+    for ax, metric in zip(axes, metrics):
+        means = []
+        stds = []
+
+        for st in score_types:
+            means.append(aggregated[f"{st}_{metric}_eval_mean"])
+            stds.append(aggregated[f"{st}_{metric}_eval_std"])
+
+        x = np.arange(len(score_types))
+        bars = ax.bar(x, means, yerr=stds, capsize=5, color=["tab:orange", "tab:green", "tab:blue"])
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(["Raw", "Mean", "Upper"])
+        ax.set_ylabel(metric_labels[metric])
+        ax.set_title(metric_labels[metric])
+
+        # Add value labels on bars
+        for bar, mean, std in zip(bars, means, stds):
+            height = bar.get_height()
+            ax.annotate(f'{mean:.3f}',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontsize=9)
+
+    fig.suptitle("Discriminative Performance by Score Type (Eval Set)", fontsize=12, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / "discriminative_comparison.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "discriminative_comparison.png", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_calibration_success_comparison(aggregated: Dict, output_dir: Path):
+    """Plot calibration success rate comparison for all score types."""
+    apply_plot_style()
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    # Raw and mean score (one-sided calibration success)
+    score_types = ["raw", "mean"]
+    labels = ["Raw score", "Mean score"]
+    colors = ["tab:orange", "tab:green"]
+
+    for i, (st, label, color) in enumerate(zip(score_types, labels, colors)):
+        rate = aggregated[f"{st}_one_sided_success_rate"]
+        ci_low = aggregated[f"{st}_one_sided_success_rate_ci_low"]
+        ci_high = aggregated[f"{st}_one_sided_success_rate_ci_high"]
+
+        ax.barh(i, rate, xerr=[[rate - ci_low], [ci_high - rate]], capsize=5, color=color, label=label)
+
+    # Upper bound at different alpha values
+    alpha_values = aggregated["alpha_values"]
+    upper_offset = len(score_types)
+
+    for j, alpha in enumerate(alpha_values):
+        alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
+        rate = aggregated[f"{alpha_key}_upper_one_sided_success_rate"]
+        ci_low = aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_low"]
+        ci_high = aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_high"]
+        target = 1 - alpha
+
+        ax.barh(upper_offset + j, rate, xerr=[[rate - ci_low], [ci_high - rate]],
+                capsize=5, color="tab:blue", alpha=0.7 + 0.3 * (j / len(alpha_values)))
+        ax.axvline(target, color="red", linestyle=":", alpha=0.5)
+
+    # Y-axis labels
+    yticks = list(range(len(score_types) + len(alpha_values)))
+    yticklabels = labels + [f"Upper (α={a})" for a in alpha_values]
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(yticklabels)
+
+    ax.axvline(0.5, color="gray", linestyle="--", alpha=0.5, label="Baseline (50%)")
+    ax.set_xlabel("Calibration Success Rate")
+    ax.set_xlim(0, 1.05)
+    ax.set_title("Per-Bin Calibration Success Rate (Corollary 4.1)")
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "calibration_success_comparison.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "calibration_success_comparison.png", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_risk_coverage_curve(per_rep_results: List[Dict], output_dir: Path):
+    """Plot average risk-coverage curve for all score types."""
+    apply_plot_style()
+
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    score_types = ["raw", "mean", "upper"]
+    colors = {"raw": "tab:orange", "mean": "tab:green", "upper": "tab:blue"}
+    labels = {"raw": "Raw score", "mean": "Mean score", "upper": "Upper bound"}
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    for st in score_types:
+        coverages_mean = []
+        risks_mean = []
+        coverages_std = []
+        risks_std = []
+
+        for tau in thresholds:
+            tau_key = f"{tau:.2f}".replace(".", "_")
+            cov_vals = [r[f"{st}_coverage_{tau_key}"] for r in per_rep_results]
+            risk_vals = [r[f"{st}_selective_risk_{tau_key}"] for r in per_rep_results]
+
+            coverages_mean.append(np.mean(cov_vals))
+            coverages_std.append(np.std(cov_vals))
+            risks_mean.append(np.mean(risk_vals))
+            risks_std.append(np.std(risk_vals))
+
+        coverages_mean = np.array(coverages_mean)
+        risks_mean = np.array(risks_mean)
+        coverages_std = np.array(coverages_std)
+        risks_std = np.array(risks_std)
+
+        ax.errorbar(
+            coverages_mean,
+            risks_mean,
+            xerr=coverages_std,
+            yerr=risks_std,
+            fmt="o-",
+            capsize=3,
+            markersize=5,
+            color=colors[st],
+            label=labels[st],
+        )
+
+    # Diagonal line (risk = 1 - coverage is not the right reference)
+    # Instead show τ line
+    ax.plot([0, 1], [0, 0.5], "k--", alpha=0.3, label=r"$R(\tau) = \tau/2$")
+
+    ax.set_xlabel(r"Coverage $C(\tau)$")
+    ax.set_ylabel(r"Selective Risk $R(\tau)$")
+    ax.set_title("Risk-Coverage Curve")
+    ax.set_xlim(0, 1.05)
+    ax.set_ylim(0, None)
+    ax.legend(loc="upper left")
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "risk_coverage_curve.pdf", bbox_inches="tight")
+    fig.savefig(output_dir / "risk_coverage_curve.png", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -811,50 +1316,141 @@ def main():
     print(f"Saved aggregated results to: {agg_path}")
 
     # Print summary
-    print("\n" + "=" * 60)
-    print("SUMMARY: Coverage Validation Results")
-    print("=" * 60)
+    print("\n" + "=" * 70)
+    print("SUMMARY: Calibration & Selective Risk Validation Results")
+    print("=" * 70)
 
-    print(f"\nDiscriminative Metrics:")
-    print(f"  ROC-AUC (eval): {aggregated['roc_auc_eval_mean']:.4f} ± {aggregated['roc_auc_eval_std']:.4f}")
-    print(f"  FPR@95 (eval): {aggregated['fpr_at_95_eval_mean']:.4f} ± {aggregated['fpr_at_95_eval_std']:.4f}")
-    print(f"  AURC (eval): {aggregated['aurc_eval_mean']:.4f} ± {aggregated['aurc_eval_std']:.4f}")
+    # =========================================================================
+    # SECTION 1: Discriminative Metrics for All Score Types
+    # =========================================================================
+    print(f"\n{'='*70}")
+    print("1. DISCRIMINATIVE METRICS (Eval Set)")
+    print("=" * 70)
+    print(f"{'Score Type':<12} | {'ROC-AUC':>15} | {'FPR@95':>15} | {'AURC':>15}")
+    print("-" * 70)
 
-    print(f"\nCoverage Validation (target: π̂(α) ≥ 1 - α):")
-    print("-" * 60)
-    print(f"{'Alpha':>8} | {'Target':>8} | {'Success Rate':>15} | {'95% CI':>20} | {'Pass':>6}")
-    print("-" * 60)
+    for st in ["raw", "mean", "upper"]:
+        roc = aggregated[f"{st}_roc_auc_eval_mean"]
+        roc_std = aggregated[f"{st}_roc_auc_eval_std"]
+        fpr = aggregated[f"{st}_fpr_at_95_eval_mean"]
+        fpr_std = aggregated[f"{st}_fpr_at_95_eval_std"]
+        aurc = aggregated[f"{st}_aurc_eval_mean"]
+        aurc_std = aggregated[f"{st}_aurc_eval_std"]
+        print(f"{st.capitalize():<12} | {roc:.4f}±{roc_std:.4f} | {fpr:.4f}±{fpr_std:.4f} | {aurc:.6f}±{aurc_std:.6f}")
+
+    # =========================================================================
+    # SECTION 2: Per-Bin Calibration (Corollary 4.1)
+    # =========================================================================
+    print(f"\n{'='*70}")
+    print("2. PER-BIN CALIBRATION (Corollary 4.1)")
+    print("=" * 70)
+
+    print("\n2a. Raw & Mean Score (One-Sided Calibration Success):")
+    print("-" * 70)
+    print(f"{'Score Type':<12} | {'Success Rate':>15} | {'95% CI':>25} | {'Expected':>10}")
+    print("-" * 70)
+
+    for st in ["raw", "mean"]:
+        rate = aggregated[f"{st}_one_sided_success_rate"]
+        ci_low = aggregated[f"{st}_one_sided_success_rate_ci_low"]
+        ci_high = aggregated[f"{st}_one_sided_success_rate_ci_high"]
+        print(f"{st.capitalize():<12} | {rate:>15.4f} | [{ci_low:.4f}, {ci_high:.4f}] | {'~50%':>10}")
+
+    print("\n2b. Upper Bound (Hoeffding + Bonferroni):")
+    print("-" * 70)
+    print(f"{'Alpha':>8} | {'Target':>8} | {'Success Rate':>15} | {'95% CI':>25} | {'Pass':>6}")
+    print("-" * 70)
 
     for alpha in args.alpha:
         alpha_key = f"alpha_{alpha:.4f}".rstrip('0').rstrip('.')
         target = 1 - alpha
-        success_rate = aggregated[f"{alpha_key}_success_rate"]
-        ci_low = aggregated[f"{alpha_key}_success_rate_ci_low"]
-        ci_high = aggregated[f"{alpha_key}_success_rate_ci_high"]
-        passed = "✓" if success_rate >= target else "✗"
-
+        success_rate = aggregated[f"{alpha_key}_upper_one_sided_success_rate"]
+        ci_low = aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_low"]
+        ci_high = aggregated[f"{alpha_key}_upper_one_sided_success_rate_ci_high"]
+        passed = "✓" if ci_low >= target else ("~" if success_rate >= target else "✗")
         print(f"{alpha:>8.3f} | {target:>8.3f} | {success_rate:>15.4f} | [{ci_low:.4f}, {ci_high:.4f}] | {passed:>6}")
 
-    print("-" * 60)
+    # =========================================================================
+    # SECTION 3: Selective Risk (Corollary 4.2)
+    # =========================================================================
+    print(f"\n{'='*70}")
+    print("3. SELECTIVE RISK GUARANTEE (Corollary 4.2)")
+    print("=" * 70)
 
-    print(f"\nViolation Statistics (α = 0.05):")
+    print("\n3a. All-Thresholds Success Rate:")
+    print("-" * 70)
+    print(f"{'Score Type':<12} | {'Success Rate':>15} | {'95% CI':>25} | {'Expected':>10}")
+    print("-" * 70)
+
+    for st in ["raw", "mean", "upper"]:
+        rate = aggregated[f"{st}_all_thresholds_success_rate"]
+        ci_low = aggregated[f"{st}_all_thresholds_success_rate_ci_low"]
+        ci_high = aggregated[f"{st}_all_thresholds_success_rate_ci_high"]
+        expected = "≥95%" if st == "upper" else "~50%"
+        print(f"{st.capitalize():<12} | {rate:>15.4f} | [{ci_low:.4f}, {ci_high:.4f}] | {expected:>10}")
+
+    print("\n3b. Per-Threshold Success Rate (Upper Bound, α=0.05):")
+    print("-" * 70)
+    thresholds = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+    print(f"{'Threshold':>10} | {'Coverage':>12} | {'Sel. Risk':>12} | {'Success':>12} | {'95% CI':>20}")
+    print("-" * 70)
+
+    for tau in thresholds:
+        tau_key = f"{tau:.2f}".replace(".", "_")
+        cov = aggregated[f"upper_coverage_{tau_key}_mean"]
+        risk = aggregated[f"upper_selective_risk_{tau_key}_mean"]
+        rate = aggregated[f"upper_risk_success_{tau_key}_rate"]
+        ci_low = aggregated[f"upper_risk_success_{tau_key}_ci_low"]
+        ci_high = aggregated[f"upper_risk_success_{tau_key}_ci_high"]
+        print(f"{tau:>10.2f} | {cov:>12.4f} | {risk:>12.4f} | {rate:>12.4f} | [{ci_low:.4f}, {ci_high:.4f}]")
+
+    # =========================================================================
+    # SECTION 4: Violation Statistics
+    # =========================================================================
+    print(f"\n{'='*70}")
+    print("4. VIOLATION STATISTICS (α = 0.05)")
+    print("=" * 70)
+
     alpha_key = "alpha_0.05"
-    print(f"  Max violation mean: {aggregated[f'{alpha_key}_max_violation_mean']:.6f}")
-    print(f"  Max violation std: {aggregated[f'{alpha_key}_max_violation_std']:.6f}")
-    print(f"  Max violation 95th percentile: {aggregated[f'{alpha_key}_max_violation_quantiles']['95']:.6f}")
+    print(f"  Max calibration violation mean: {aggregated[f'{alpha_key}_upper_one_sided_max_violation_mean']:.6f}")
+    print(f"  Max calibration violation std:  {aggregated[f'{alpha_key}_upper_one_sided_max_violation_std']:.6f}")
+    print(f"  Max calibration violation 95th: {aggregated[f'{alpha_key}_upper_one_sided_max_violation_quantiles']['95']:.6f}")
+    print(f"  Max selective risk violation:   {aggregated['upper_max_risk_violation_mean']:.6f}")
 
+    # =========================================================================
     # Generate plots
-    print("\nGenerating plots...")
-    plot_coverage_vs_alpha(aggregated, plots_dir)
-    plot_violation_ecdf(per_rep_results, args.alpha, plots_dir)
+    # =========================================================================
+    print("\n" + "=" * 70)
+    print("GENERATING PLOTS...")
+    print("=" * 70)
 
-    # Generate histogram for alpha=0.05
+    plot_coverage_vs_alpha(aggregated, plots_dir)
+    print("  - coverage_vs_alpha.pdf")
+
+    plot_violation_ecdf(per_rep_results, args.alpha, plots_dir)
+    print("  - max_violation_ecdf.pdf")
+
     if 0.05 in args.alpha:
         plot_violation_histogram(per_rep_results, 0.05, plots_dir)
+        print("  - violation_histogram_alpha_0.05.pdf")
 
-    print(f"Plots saved to: {plots_dir}")
+    plot_selective_risk_vs_threshold(aggregated, args.alpha, plots_dir)
+    print("  - selective_risk_vs_threshold.pdf")
 
-    print("\nDone!")
+    plot_discriminative_comparison(aggregated, plots_dir)
+    print("  - discriminative_comparison.pdf")
+
+    plot_calibration_success_comparison(aggregated, plots_dir)
+    print("  - calibration_success_comparison.pdf")
+
+    plot_risk_coverage_curve(per_rep_results, plots_dir)
+    print("  - risk_coverage_curve.pdf")
+
+    print(f"\nAll plots saved to: {plots_dir}")
+
+    print("\n" + "=" * 70)
+    print("DONE!")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

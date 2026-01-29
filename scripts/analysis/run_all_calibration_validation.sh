@@ -1,22 +1,33 @@
 #!/bin/bash
 #
-# Run conservative calibration validation for all dataset/model combinations.
+# Run calibration and selective risk validation for all dataset/model combinations.
+#
+# Validates:
+# - Corollary 4.1: Per-bin calibration guarantee
+# - Corollary 4.2: Selective classification risk guarantee
+#
+# Computes ALL metrics for THREE score types: raw, mean, upper
 #
 # Usage:
-#   bash scripts/analysis/run_all_calibration_validation.sh [--n-repetitions N]
+#   bash scripts/analysis/run_all_calibration_validation.sh [N_REPS]
 #
-# Default: 200 repetitions (as specified in plan)
+# Default: 100 repetitions
 #
 
 set -e
 
-N_REPS=${1:-200}
+N_REPS=${1:-100}
 SCRIPT="scripts/analysis/validate_conservative_calibration.py"
 BASE_OUTPUT="results/calibration_validation"
 
 echo "============================================================"
-echo "Conservative Calibration Validation"
+echo "Calibration & Selective Risk Validation (v2)"
 echo "Running with $N_REPS repetitions per configuration"
+echo "============================================================"
+echo "Validates:"
+echo "  - Corollary 4.1: Per-bin calibration"
+echo "  - Corollary 4.2: Selective classification risk"
+echo "Score types: raw, mean, upper"
 echo "============================================================"
 
 # --------------------------------------------------------------------------
@@ -34,7 +45,7 @@ run_validation() {
     local n_bins=$9
 
     local latent_dir="latent/${dataset}_${model}_ce/transform-test_n-epochs-1"
-    local output_dir="${BASE_OUTPUT}/${dataset}/${model}_ce/${score_type}/val-${N_REPS}seeds"
+    local output_dir="${BASE_OUTPUT}/${dataset}/${model}_ce/${score_type}/val-${N_REPS}seeds-v2"
 
     local normalize_flag=""
     if [ "$normalize" = "true" ]; then
@@ -47,6 +58,7 @@ run_validation() {
     echo "------------------------------------------------------------"
     echo "Dataset: $dataset | Model: $model | Score: $score_type"
     echo "Temperature: $temperature | Normalize: $normalize"
+    echo "Splits: n_res=$n_res, n_cal=$n_cal, n_eval=$n_eval, n_bins=$n_bins"
     echo "Output: $output_dir"
     echo "------------------------------------------------------------"
 
