@@ -483,7 +483,8 @@ def main():
     output_dir = args.output_dir / args.score_name / partition_run_tag
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_filename = f"{args.dataset}_{args.model}_{args.metric}_vs_nclusters.pdf"
+    metric_name = 'rocauc' if args.metric == 'roc_auc' else args.metric
+    output_filename = f"{args.dataset}_{args.model}_{metric_name}_vs_nclusters.pdf"
     output_path = output_dir / output_filename
 
     # Create plot
