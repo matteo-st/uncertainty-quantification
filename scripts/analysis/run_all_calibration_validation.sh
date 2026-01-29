@@ -74,7 +74,6 @@ run_validation() {
         --temperature $temperature \
         $normalize_flag \
         --base-seed 1 \
-        --m-min 20 \
         --output-dir "$output_dir"
 }
 
@@ -85,14 +84,14 @@ run_validation() {
 
 # ---- ResNet34 ----
 # Hyperparameters from seed-split-1 experiments (adjust as needed)
-run_validation "cifar10" "resnet34" "msp"    1.0 false 1000 4000 5000 50
-run_validation "cifar10" "resnet34" "doctor" 1.0 true  1000 4000 5000 50
-run_validation "cifar10" "resnet34" "margin" 1.0 false 1000 4000 5000 50
+run_validation "cifar10" "resnet34" "msp"    1.0 false 1000 4000 5000 30
+run_validation "cifar10" "resnet34" "doctor" 1.0 true  1000 4000 5000 30
+run_validation "cifar10" "resnet34" "margin" 1.0 false 1000 4000 5000 30
 
 # ---- DenseNet121 ----
-run_validation "cifar10" "densenet121" "msp"    1.0 false 1000 4000 5000 50
-run_validation "cifar10" "densenet121" "doctor" 1.0 true  1000 4000 5000 50
-run_validation "cifar10" "densenet121" "margin" 1.0 false 1000 4000 5000 50
+run_validation "cifar10" "densenet121" "msp"    1.0 false 1000 4000 5000 30
+run_validation "cifar10" "densenet121" "doctor" 1.0 true  1000 4000 5000 30
+run_validation "cifar10" "densenet121" "margin" 1.0 false 1000 4000 5000 30
 
 
 # ==========================================================================
@@ -100,14 +99,14 @@ run_validation "cifar10" "densenet121" "margin" 1.0 false 1000 4000 5000 50
 # ==========================================================================
 
 # ---- ResNet34 ----
-run_validation "cifar100" "resnet34" "msp"    1.0 false 1000 4000 5000 50
-run_validation "cifar100" "resnet34" "doctor" 1.0 true  1000 4000 5000 50
-run_validation "cifar100" "resnet34" "margin" 1.0 false 1000 4000 5000 50
+run_validation "cifar100" "resnet34" "msp"    1.0 false 1000 4000 5000 30
+run_validation "cifar100" "resnet34" "doctor" 1.0 true  1000 4000 5000 30
+run_validation "cifar100" "resnet34" "margin" 1.0 false 1000 4000 5000 30
 
 # ---- DenseNet121 ----
-run_validation "cifar100" "densenet121" "msp"    1.0 false 1000 4000 5000 50
-run_validation "cifar100" "densenet121" "doctor" 1.0 true  1000 4000 5000 50
-run_validation "cifar100" "densenet121" "margin" 1.0 false 1000 4000 5000 50
+run_validation "cifar100" "densenet121" "msp"    1.0 false 1000 4000 5000 30
+run_validation "cifar100" "densenet121" "doctor" 1.0 true  1000 4000 5000 30
+run_validation "cifar100" "densenet121" "margin" 1.0 false 1000 4000 5000 30
 
 
 # ==========================================================================
@@ -119,14 +118,14 @@ run_validation "cifar100" "densenet121" "margin" 1.0 false 1000 4000 5000 50
 # ==========================================================================
 
 # ---- ViT Base16 ----
-run_validation "imagenet" "timm_vit_base16" "msp"    0.6 false 5000 20000 25000 100
-run_validation "imagenet" "timm_vit_base16" "doctor" 0.7 true  5000 20000 25000 100
-run_validation "imagenet" "timm_vit_base16" "margin" 0.7 false 5000 20000 25000 100
+run_validation "imagenet" "timm_vit_base16" "msp"    0.6 false 5000 20000 25000 50
+run_validation "imagenet" "timm_vit_base16" "doctor" 0.7 true  5000 20000 25000 50
+run_validation "imagenet" "timm_vit_base16" "margin" 0.7 false 5000 20000 25000 50
 
 # ---- ViT Tiny16 ----
-run_validation "imagenet" "timm_vit_tiny16" "msp"    0.6 false 5000 20000 25000 100
-run_validation "imagenet" "timm_vit_tiny16" "doctor" 0.7 true  5000 20000 25000 100
-run_validation "imagenet" "timm_vit_tiny16" "margin" 0.7 false 5000 20000 25000 100
+run_validation "imagenet" "timm_vit_tiny16" "msp"    0.6 false 5000 20000 25000 50
+run_validation "imagenet" "timm_vit_tiny16" "doctor" 0.7 true  5000 20000 25000 50
+run_validation "imagenet" "timm_vit_tiny16" "margin" 0.7 false 5000 20000 25000 50
 
 
 echo ""

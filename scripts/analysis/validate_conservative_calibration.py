@@ -31,7 +31,6 @@ Usage:
         --score-type msp \
         --temperature 0.6 \
         --base-seed 1 \
-        --m-min 20 \
         --output-dir results/calibration_validation/imagenet/timm_vit_base16_ce/msp/val-100seeds-v2
 """
 from __future__ import annotations
@@ -300,7 +299,6 @@ def run_single_repetition(
     score_type: str,
     temperature: float,
     normalize: bool,
-    m_min: int = 20,
 ) -> Dict[str, Any]:
     """
     Run a single repetition of the calibration validation.
@@ -323,7 +321,6 @@ def run_single_repetition(
         score_type: Type of uncertainty score
         temperature: Temperature scaling
         normalize: Whether to normalize (for doctor score)
-        m_min: Minimum samples in bin for reliable evaluation
 
     Returns:
         Dictionary with all metrics for this repetition
@@ -376,8 +373,8 @@ def run_single_repetition(
     scores_mean_eval = means_cal[clusters_eval]
     scores_mean_cal = means_cal[clusters_cal]
 
-    # Reliable bin mask for calibration metrics
-    reliable_mask = counts_eval >= m_min
+    # All bins mask for calibration metrics (include all non-empty bins)
+    reliable_mask = counts_eval > 0
 
     # =========================================================================
     # Initialize results dictionary
@@ -1186,12 +1183,6 @@ def parse_args() -> argparse.Namespace:
         help="Base seed for fixing res split (must match seed-split from experiments).",
     )
     parser.add_argument(
-        "--m-min",
-        type=int,
-        default=20,
-        help="Minimum samples in bin for reliable evaluation.",
-    )
-    parser.add_argument(
         "--output-dir",
         type=str,
         required=True,
@@ -1259,7 +1250,6 @@ def main():
         "temperature": args.temperature,
         "normalize": args.normalize,
         "base_seed": args.base_seed,
-        "m_min": args.m_min,
     }
 
     print(f"\nConfiguration:")
@@ -1291,7 +1281,6 @@ def main():
             score_type=args.score_type,
             temperature=args.temperature,
             normalize=args.normalize,
-            m_min=args.m_min,
         )
         per_rep_results.append(result)
 
